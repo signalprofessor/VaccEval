@@ -10,7 +10,9 @@
     "build": "vinext build",
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
-    "format": "oxfmt"
+    "format": "oxfmt",
+    "build:loopia": "vite build --config vite.loopia.config.ts",
+    "package:loopia": "python3 scripts/package_loopia.py loopia-dist output/VaccEval_Loopia.zip"
   },
   "dependencies": {
     "react": "19.2.6",
