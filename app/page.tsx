@@ -1,117 +1,46 @@
 'use client';
-
 import { useEffect, useMemo, useState } from 'react';
 import { Activity, CalendarDays, ChevronLeft, ChevronRight, ShieldCheck, TrendingUp } from 'lucide-react';
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-type Datum = { date: string; region: string; pathogen: string; count: number };
-type Dataset = { meta: { sourceSnapshot: string; generatedAt: string; dateRange: string[]; measure: string; privacy: string }; regions: string[]; pathogens: string[]; series: Datum[] };
+type ClinicalDatum={date:string;region:string;pathogen:string;count:number};
+type WWDatum={date:string;region:string;pathogen:string;value:number};
+type ClinicalData={meta:{sourceSnapshot:string;dateRange:string[]};regions:string[];pathogens:string[];series:ClinicalDatum[]};
+type WWData={meta:{dateRange:string[];generatedAt:string;methodChangeDate:string};regions:string[];pathogens:string[];series:WWDatum[]};
+type Point={date:string;value:number}; type Mode='clinical'|'wastewater'; type Model='weekoverweek'|'linear';
+const fmt=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric'});const shortFmt=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short'});
+const mean=(v:number[])=>v.length?v.reduce((a,b)=>a+b,0)/v.length:0;const clamp=(v:number,l:number,h:number)=>Math.max(l,Math.min(h,v));const dateLabel=(v:string)=>fmt.format(new Date(`${v}T12:00:00`));
+const shift=(d:string,n:number)=>{const x=new Date(`${d}T12:00:00`);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10)};
 
-const fmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-const shortFmt = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' });
-
-function mean(values: number[]) { return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; }
-function clamp(value: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, value)); }
-function dateLabel(value: string) { return fmt.format(new Date(`${value}T12:00:00`)); }
-
-export default function Home() {
-  const [data, setData] = useState<Dataset | null>(null);
-  const [region, setRegion] = useState('Östergötland');
-  const [pathogen, setPathogen] = useState('Influenza');
-  const [analysisDate, setAnalysisDate] = useState('2025-02-15');
-  const [modelType, setModelType] = useState<'weekoverweek' | 'linear'>('weekoverweek');
-
-  useEffect(() => { fetch('/data/vacceval.json').then(r => r.json()).then(setData); }, []);
-
-  const result = useMemo(() => {
-    if (!data) return null;
-    const base = data.series.filter(d => d.region === region && d.pathogen === pathogen);
-    const index = clamp(base.findIndex(d => d.date >= analysisDate), 13, base.length - 15);
-    const chosen = base[index]?.date === analysisDate ? index : Math.max(13, index - 1);
-    const smooth = base.map((d, i) => ({ ...d, smooth: mean(base.slice(Math.max(0, i - 6), i + 1).map(x => x.count)) }));
-    const currentWeek = mean(base.slice(chosen - 6, chosen + 1).map(d => d.count));
-    const previous = mean(base.slice(chosen - 13, chosen - 6).map(d => d.count));
-    const fit = smooth.slice(chosen - 13, chosen + 1);
-    const xMean = 6.5;
-    const yMean = mean(fit.map(d => d.smooth));
-    const linearSlope = fit.reduce((sum, d, i) => sum + (i - xMean) * (d.smooth - yMean), 0) / fit.reduce((sum, _d, i) => sum + (i - xMean) ** 2, 0);
-    const linearLevel = yMean + linearSlope * (13 - xMean);
-    const current = modelType === 'linear' ? Math.max(0, linearLevel) : currentWeek;
-    const slope = modelType === 'linear' ? linearSlope : (currentWeek - previous) / 7;
-    const relChange = modelType === 'linear' ? (slope * 7) / Math.max(current, 1) : (currentWeek - previous) / Math.max(previous, 1);
-    const residuals = modelType === 'linear' ? fit.map((d, i) => d.smooth - (linearLevel + linearSlope * (i - 13))) : [...base.slice(chosen - 13, chosen - 6).map(d => d.count - previous), ...base.slice(chosen - 6, chosen + 1).map(d => d.count - currentWeek)];
-    const sigma = Math.max(1, Math.sqrt(mean(residuals.map(x => x * x))));
-    const start = Math.max(0, chosen - 83);
-    const observed = smooth.slice(start, chosen + 1).map(d => ({ ...d, observed: d.count }));
-    const predictions = Array.from({ length: 14 }, (_, offset) => {
-      const h = offset + 1;
-      const pred = Math.max(0, current + slope * h);
-      const width = 1.96 * sigma * Math.sqrt(1 + h / 14);
-      const dt = new Date(`${base[chosen].date}T12:00:00`); dt.setDate(dt.getDate() + h);
-      return { date: dt.toISOString().slice(0, 10), prediction: pred, bandLow: Math.max(0, pred - width), bandHigh: pred + width, bandRange: [Math.max(0, pred - width), pred + width] };
-    });
-    const btErrors: number[] = [];
-    for (let i = Math.max(14, chosen - 90); i <= chosen - 7; i++) {
-      const cur = mean(base.slice(i - 6, i + 1).map(d => d.count));
-      const prev = mean(base.slice(i - 13, i - 6).map(d => d.count));
-      const localFit = smooth.slice(i - 13, i + 1);
-      const localMean = mean(localFit.map(d => d.smooth));
-      const localSlope = localFit.reduce((sum, d, j) => sum + (j - 6.5) * (d.smooth - localMean), 0) / localFit.reduce((sum, _d, j) => sum + (j - 6.5) ** 2, 0);
-      const localLevel = localMean + localSlope * 6.5;
-      const predicted = modelType === 'linear' ? Math.max(0, localLevel + localSlope * 7) : Math.max(0, cur + (cur - prev));
-      btErrors.push(Math.abs(smooth[i + 7].smooth - predicted));
-    }
-    const mae = mean(btErrors);
-    const scale = Math.max(1, mean(smooth.slice(Math.max(21, chosen - 83), chosen + 1).map(d => d.smooth)));
-    const nmae = mae / scale;
-    const reliabilityScore = clamp(1 - (nmae - .2) / .4, 0, 1);
-    const alert = relChange > .5 ? 'Red' : relChange > .2 ? 'Yellow' : 'Green';
-    return { chart: [...observed, ...predictions], current, previous, slope, relChange, mae, nmae, reliabilityScore, alert, date: base[chosen].date, maxDate: base[base.length - 15].date };
-  }, [data, region, pathogen, analysisDate, modelType]);
-
-  function moveDate(days: number) {
-    if (!result || !data) return;
-    const dt = new Date(`${result.date}T12:00:00`); dt.setDate(dt.getDate() + days);
-    const next = dt.toISOString().slice(0, 10);
-    setAnalysisDate(next < data.meta.dateRange[0] ? data.meta.dateRange[0] : next > result.maxDate ? result.maxDate : next);
+function analyse(base:Point[],requested:string,mode:Mode,model:Model){
+  const reserve=mode==='clinical'?14:2;let found=base.findIndex(d=>d.date>=requested);if(found<0)found=base.length-1;const chosen=clamp(base[found]?.date===requested?found:found-1,mode==='clinical'?13:1,base.length-reserve-1);
+  const smooth=base.map((d,i)=>({...d,smooth:mean(base.slice(Math.max(0,i-(mode==='clinical'?6:1)),i+1).map(x=>x.value))}));
+  let current=0,previous=0,slope=0,relChange=0,sigma=1,predictions:any[]=[];
+  if(mode==='wastewater'){
+    current=smooth[chosen].smooth;previous=smooth[chosen-1].smooth;slope=current-previous;relChange=(current-previous)/Math.max(Math.abs(previous),Number.EPSILON);
+    const diffs=smooth.slice(Math.max(1,chosen-8),chosen+1).map((d,i,a)=>i?d.smooth-a[i-1].smooth:NaN).filter(Number.isFinite);sigma=Math.max(Number.EPSILON,Math.sqrt(mean(diffs.map(x=>x*x))));
+    predictions=[1,2].map(h=>{const pred=Math.max(0,current+slope*h),w=1.96*sigma*Math.sqrt(h);return{date:shift(base[chosen].date,h*7),prediction:pred,bandRange:[Math.max(0,pred-w),pred+w]}});
+  }else{
+    const currentWeek=mean(base.slice(chosen-6,chosen+1).map(d=>d.value));previous=mean(base.slice(chosen-13,chosen-6).map(d=>d.value));const fit=smooth.slice(chosen-13,chosen+1),xm=6.5,ym=mean(fit.map(d=>d.smooth));const ls=fit.reduce((s,d,i)=>s+(i-xm)*(d.smooth-ym),0)/fit.reduce((s,_d,i)=>s+(i-xm)**2,0),ll=ym+ls*(13-xm);current=model==='linear'?Math.max(0,ll):currentWeek;slope=model==='linear'?ls:(currentWeek-previous)/7;relChange=model==='linear'?slope*7/Math.max(current,1):(currentWeek-previous)/Math.max(previous,1);const res=model==='linear'?fit.map((d,i)=>d.smooth-(ll+ls*(i-13))):[...base.slice(chosen-13,chosen-6).map(d=>d.value-previous),...base.slice(chosen-6,chosen+1).map(d=>d.value-currentWeek)];sigma=Math.max(1,Math.sqrt(mean(res.map(x=>x*x))));predictions=Array.from({length:14},(_,o)=>{const h=o+1,p=Math.max(0,current+slope*h),w=1.96*sigma*Math.sqrt(1+h/14);return{date:shift(base[chosen].date,h),prediction:p,bandRange:[Math.max(0,p-w),p+w]}});
   }
+  const lookback=mode==='clinical'?83:51,start=Math.max(0,chosen-lookback);const observed=smooth.slice(start,chosen+1).map(d=>({...d,observed:d.value}));const errors:number[]=[];const horizon=mode==='clinical'?7:1;
+  for(let i=Math.max(mode==='clinical'?14:2,chosen-(mode==='clinical'?90:26));i<=chosen-horizon;i++){if(mode==='wastewater'){const p=Math.max(0,smooth[i].smooth+(smooth[i].smooth-smooth[i-1].smooth));errors.push(Math.abs(smooth[i+1].smooth-p));}else{const cur=mean(base.slice(i-6,i+1).map(d=>d.value)),prev=mean(base.slice(i-13,i-6).map(d=>d.value));const lf=smooth.slice(i-13,i+1),lm=mean(lf.map(d=>d.smooth));const ls=lf.reduce((s,d,j)=>s+(j-6.5)*(d.smooth-lm),0)/lf.reduce((s,_d,j)=>s+(j-6.5)**2,0),ll=lm+ls*6.5;const p=model==='linear'?Math.max(0,ll+ls*7):Math.max(0,cur+(cur-prev));errors.push(Math.abs(smooth[i+7].smooth-p));}}
+  const mae=mean(errors),scale=Math.max(Number.EPSILON,mean(smooth.slice(start,chosen+1).map(d=>Math.abs(d.smooth)))),nmae=mae/scale,reliability=clamp(1-(nmae-.2)/.4,0,1),alert=relChange>.5?'Red':relChange>.2?'Yellow':'Green';return{chart:[...observed,...predictions],current,previous,slope,relChange,mae,nmae,reliability,alert,date:base[chosen].date,maxDate:base[base.length-reserve-1].date};
+}
 
-  if (!data || !result) return <main className="loading">Loading VaccEval surveillance data…</main>;
-  const trendWord = Math.abs(result.relChange) < .1 ? 'Stable' : result.relChange > 0 ? 'Increasing' : 'Decreasing';
-  const reliabilityWord = result.reliabilityScore >= .67 ? 'High' : result.reliabilityScore >= .33 ? 'Moderate' : 'Low';
-
-  return <main className="app-shell">
-    <header className="topbar">
-      <div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>VaccEval</strong><span>Infectious disease surveillance</span></div></div>
-      <div className="status"><span></span> Data snapshot {data.meta.sourceSnapshot}</div>
-      <button className="method">Methodology</button>
-    </header>
-
-    <section className="workspace">
-      <div className="heading-row"><div><p className="eyebrow">Situational overview</p><h1>{pathogen} in {region}</h1><p>Observed healthcare encounters, causal trend and a transparent 14-day outlook.</p></div><div className="snapshot"><CalendarDays size={17}/><span>Analysis date<strong>{dateLabel(result.date)}</strong></span></div></div>
-
-      <div className="filterbar">
-        <label>Region<select value={region} onChange={e => setRegion(e.target.value)}>{data.regions.map(x => <option key={x}>{x}</option>)}</select></label>
-        <label>Pathogen<select value={pathogen} onChange={e => setPathogen(e.target.value)}>{data.pathogens.map(x => <option key={x}>{x}</option>)}</select></label>
-        <div className="date-control"><span>Historical replay</span><div><button aria-label="Previous week" onClick={() => moveDate(-7)}><ChevronLeft size={17}/></button><input type="date" value={result.date} min={data.meta.dateRange[0]} max={result.maxDate} onChange={e => setAnalysisDate(e.target.value)}/><button aria-label="Next week" onClick={() => moveDate(7)}><ChevronRight size={17}/></button></div></div>
-        <label>Model<select value={modelType} onChange={e => setModelType(e.target.value as 'weekoverweek' | 'linear')}><option value="weekoverweek">Week-over-week</option><option value="linear">Local linear trend</option></select></label>
-      </div>
-
-      <div className="metrics">
-        <article><span>Current level</span><strong>{result.current.toFixed(1)}</strong><small>encounters per day</small></article>
-        <article><span>7-day change</span><strong className={result.relChange >= 0 ? 'up' : 'down'}>{result.relChange >= 0 ? '+' : ''}{(result.relChange * 100).toFixed(0)}%</strong><small>{modelType === 'linear' ? 'model projection' : 'versus previous week'}</small></article>
-        <article><span>Trend</span><strong>{trendWord}</strong><small>{Math.abs(result.slope).toFixed(2)} encounters/day²</small></article>
-        <article><span>Alert</span><strong className={`alert ${result.alert.toLowerCase()}`}><i></i>{result.alert}</strong><small>20% / 50% thresholds</small></article>
-        <article><span>Forecast reliability</span><strong>{reliabilityWord}</strong><small>{(result.reliabilityScore * 100).toFixed(0)}% score · NMAE {(result.nmae * 100).toFixed(0)}%</small></article>
-      </div>
-
-      <div className="content-grid">
-        <article className="chart-card"><div className="card-head"><div><h2>Activity and short-term forecast</h2><p>Real-time view uses only observations available on the analysis date.</p></div><div className="legend"><span className="dot observed"></span>Daily encounters <span className="line smooth"></span>7-day mean <span className="line forecast"></span>Forecast</div></div>
-          <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={result.chart} margin={{top:18,right:20,bottom:4,left:-12}}><CartesianGrid stroke="#dbe5e2" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="date" tickFormatter={v => shortFmt.format(new Date(`${v}T12:00:00`))} minTickGap={38} tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><Tooltip labelFormatter={dateLabel} contentStyle={{borderRadius:10,border:'1px solid #dbe5e2'}}/><Area dataKey="bandRange" stroke="none" fill="#a6c9c3" fillOpacity={.28}/><Line dataKey="observed" stroke="#a9b6b3" strokeWidth={0} dot={{r:2.3,fill:'#768581',stroke:'none'}} isAnimationActive={false}/><Line dataKey="smooth" stroke="#123f3a" strokeWidth={2.6} dot={false} connectNulls isAnimationActive={false}/><Line dataKey="prediction" stroke="#d16f3f" strokeWidth={2.8} strokeDasharray="7 5" dot={false} connectNulls isAnimationActive={false}/><ReferenceLine x={result.date} stroke="#8d9a97" strokeDasharray="3 4" label={{value:'Analysis date',position:'insideTopLeft',fill:'#62716e',fontSize:11}}/></ComposedChart></ResponsiveContainer></div>
-        </article>
-        <aside className="insight-card"><div className="insight-icon"><TrendingUp size={19}/></div><p className="eyebrow">Model interpretation</p><h2>{modelType === 'linear' ? `The local trend projects a ${Math.abs(result.relChange * 100).toFixed(0)}% ${result.relChange >= 0 ? 'increase' : 'decrease'} over seven days.` : `The last week was ${Math.abs(result.relChange * 100).toFixed(0)}% ${result.relChange >= 0 ? 'higher' : 'lower'} than the week before.`}</h2><p>{modelType === 'linear' ? 'The local linear model fits a straight line to the last 14 causal seven-day means.' : 'The week-over-week model compares two complete seven-day periods, reducing sensitivity to weekday reporting patterns.'}</p><div className="reliability"><div><ShieldCheck size={18}/><span>Historical reliability<strong>{reliabilityWord}</strong></span></div><div className="meter"><i style={{width:`${result.reliabilityScore * 100}%`}}></i></div><small>Mean absolute error: {result.mae.toFixed(1)} encounters</small></div></aside>
-      </div>
-      <footer><span>Aggregate data only · No personal identifiers included</span><span>{data.meta.dateRange[0]} — {data.meta.dateRange[1]}</span></footer>
-    </section>
-  </main>;
+export default function Home(){
+ const[clinical,setClinical]=useState<ClinicalData|null>(null),[ww,setWW]=useState<WWData|null>(null),[mode,setMode]=useState<Mode>('clinical'),[region,setRegion]=useState('Östergötland'),[pathogen,setPathogen]=useState('Influenza'),[analysisDate,setAnalysisDate]=useState('2025-02-15'),[model,setModel]=useState<Model>('weekoverweek');
+ useEffect(()=>{Promise.all([fetch('/data/vacceval.json').then(r=>r.json()),fetch('/data/wastewater.json').then(r=>r.json())]).then(([a,b])=>{setClinical(a);setWW(b)})},[]);
+ const active=mode==='clinical'?clinical:ww;const result=useMemo(()=>{if(!active)return null;const base=active.series.filter((d:any)=>d.region===region&&d.pathogen===pathogen).map((d:any)=>({date:d.date,value:mode==='clinical'?d.count:d.value}));return base.length?analyse(base,analysisDate,mode,model):null},[active,region,pathogen,analysisDate,mode,model]);
+ function changeMode(next:Mode){setMode(next);const d=next==='clinical'?clinical:ww;if(!d)return;setRegion(d.regions.includes(region)?region:d.regions[0]);setPathogen(next==='clinical'?'Influenza':'Influenza A+B');setAnalysisDate(d.meta.dateRange[1]);if(next==='wastewater')setModel('weekoverweek')}
+ function move(days:number){if(result&&active)setAnalysisDate(clampDate(shift(result.date,days),active.meta.dateRange[0],result.maxDate))}const clampDate=(d:string,a:string,b:string)=>d<a?a:d>b?b:d;
+ if(!clinical||!ww||!active||!result)return<main className="loading">Loading VaccEval surveillance data…</main>;
+ const trend=Math.abs(result.relChange)<.1?'Stable':result.relChange>0?'Increasing':'Decreasing',reliability=result.reliability>=.67?'High':result.reliability>=.33?'Moderate':'Low',isWW=mode==='wastewater',unit=isWW?'PMMoV-normalized signal':'encounters per day';
+ return <main className="app-shell"><header className="topbar"><div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>VaccEval</strong><span>Infectious disease surveillance</span></div></div><div className="status"><span></span>{isWW?'SLU/SEEC wastewater':'Clinical'} data through {dateLabel(active.meta.dateRange[1])}</div><button className="method">Methodology</button></header>
+ <section className="workspace"><div className="heading-row"><div><p className="eyebrow">Situational overview · {isWW?'Wastewater':'Clinical surveillance'}</p><h1>{pathogen} in {region}</h1><p>{isWW?'Weekly wastewater measurements, causal trend and a two-week outlook.':'Observed healthcare encounters, causal trend and a transparent 14-day outlook.'}</p></div><div className="snapshot"><CalendarDays size={17}/><span>Analysis date<strong>{dateLabel(result.date)}</strong></span></div></div>
+ <div className="filterbar six"><label>Data type<select value={mode} onChange={e=>changeMode(e.target.value as Mode)}><option value="clinical">Clinical</option><option value="wastewater">Wastewater</option></select></label><label>Region<select value={region} onChange={e=>setRegion(e.target.value)}>{active.regions.map(x=><option key={x}>{x}</option>)}</select></label><label>Pathogen<select value={pathogen} onChange={e=>setPathogen(e.target.value)}>{active.pathogens.map(x=><option key={x}>{x}</option>)}</select></label><label>Age<select disabled><option>All ages</option></select></label><label>Sex<select disabled><option>All sexes</option></select></label><label>Model<select value={model} disabled={isWW} onChange={e=>setModel(e.target.value as Model)}><option value="weekoverweek">{isWW?'Weekly trend':'Week-over-week'}</option>{!isWW&&<option value="linear">Local linear trend</option>}</select></label><div className="date-control"><span>Historical replay</span><div><button aria-label="Previous period" onClick={()=>move(isWW?-7:-7)}><ChevronLeft size={17}/></button><input type="date" value={result.date} min={active.meta.dateRange[0]} max={result.maxDate} onChange={e=>setAnalysisDate(e.target.value)}/><button aria-label="Next period" onClick={()=>move(7)}><ChevronRight size={17}/></button></div></div></div>
+ <div className="metrics"><article><span>Current level</span><strong>{result.current.toPrecision(3)}</strong><small>{unit}</small></article><article><span>{isWW?'Weekly':'7-day'} change</span><strong className={result.relChange>=0?'up':'down'}>{result.relChange>=0?'+':''}{(result.relChange*100).toFixed(0)}%</strong><small>{isWW?'versus previous sample':model==='linear'?'model projection':'versus previous week'}</small></article><article><span>Trend</span><strong>{trend}</strong><small>{Math.abs(result.slope).toPrecision(2)} {isWW?'signal/week':'encounters/day²'}</small></article><article><span>Alert</span><strong className={`alert ${result.alert.toLowerCase()}`}><i></i>{result.alert}</strong><small>20% / 50% thresholds</small></article><article><span>Forecast reliability</span><strong>{reliability}</strong><small>{(result.reliability*100).toFixed(0)}% score · NMAE {(result.nmae*100).toFixed(0)}%</small></article></div>
+ <div className="content-grid"><article className="chart-card"><div className="card-head"><div><h2>Activity and short-term forecast</h2><p>Real-time view uses only observations available on the analysis date.</p></div><div className="legend"><span className="dot observed"></span>{isWW?'Samples':'Daily encounters'} <span className="line smooth"></span>{isWW?'2-sample mean':'7-day mean'} <span className="line forecast"></span>Forecast</div></div><div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={result.chart} margin={{top:18,right:20,bottom:4,left:-12}}><CartesianGrid stroke="#dbe5e2" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="date" tickFormatter={v=>shortFmt.format(new Date(`${v}T12:00:00`))} minTickGap={38} tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><Tooltip labelFormatter={dateLabel} contentStyle={{borderRadius:10,border:'1px solid #dbe5e2'}}/><Area dataKey="bandRange" stroke="none" fill="#a6c9c3" fillOpacity={.28}/><Line dataKey="observed" stroke="#a9b6b3" strokeWidth={0} dot={{r:2.5,fill:'#768581',stroke:'none'}} isAnimationActive={false}/><Line dataKey="smooth" stroke="#123f3a" strokeWidth={2.6} dot={false} connectNulls/><Line dataKey="prediction" stroke="#d16f3f" strokeWidth={2.8} strokeDasharray="7 5" dot={false} connectNulls/><ReferenceLine x={result.date} stroke="#8d9a97" strokeDasharray="3 4" label={{value:'Analysis date',position:'insideTopLeft',fill:'#62716e',fontSize:11}}/>{isWW&&<ReferenceLine x={ww.meta.methodChangeDate} stroke="#b46a48" strokeDasharray="2 3" label={{value:'Method update',position:'insideBottomRight',fill:'#9a5636',fontSize:10}}/>}</ComposedChart></ResponsiveContainer></div></article>
+ <aside className="insight-card"><div className="insight-icon"><TrendingUp size={19}/></div><p className="eyebrow">Model interpretation</p><h2>{isWW?`The latest wastewater level was ${Math.abs(result.relChange*100).toFixed(0)}% ${result.relChange>=0?'higher':'lower'} than the previous sample.`:model==='linear'?`The local trend projects a ${Math.abs(result.relChange*100).toFixed(0)}% ${result.relChange>=0?'increase':'decrease'} over seven days.`:`The last week was ${Math.abs(result.relChange*100).toFixed(0)}% ${result.relChange>=0?'higher':'lower'} than the week before.`}</h2><p>{isWW?'Wastewater uses weekly PMMoV-normalized samples. Age and sex do not apply. Values from week 36 of 2026 use an updated laboratory method.':model==='linear'?'A straight line is fitted to the last 14 causal seven-day means.':'Two complete seven-day periods are compared to reduce weekday artefacts.'}</p><div className="reliability"><div><ShieldCheck size={18}/><span>Historical reliability<strong>{reliability}</strong></span></div><div className="meter"><i style={{width:`${result.reliability*100}%`}}></i></div><small>Mean absolute error: {result.mae.toPrecision(3)}</small></div></aside></div>
+ <footer><span>{isWW?'Open aggregate environmental surveillance data · No individual records':'Aggregate counts only · No personal identifiers included'}</span><span>{active.meta.dateRange[0]} — {active.meta.dateRange[1]}</span></footer></section></main>;
 }
