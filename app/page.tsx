@@ -19,6 +19,7 @@ export default function Home() {
   const [region, setRegion] = useState('Östergötland');
   const [pathogen, setPathogen] = useState('Influenza');
   const [analysisDate, setAnalysisDate] = useState('2025-02-15');
+  const [modelType, setModelType] = useState<'weekoverweek' | 'linear'>('weekoverweek');
 
   useEffect(() => { fetch('/data/vacceval.json').then(r => r.json()).then(setData); }, []);
 
@@ -28,11 +29,17 @@ export default function Home() {
     const index = clamp(base.findIndex(d => d.date >= analysisDate), 13, base.length - 15);
     const chosen = base[index]?.date === analysisDate ? index : Math.max(13, index - 1);
     const smooth = base.map((d, i) => ({ ...d, smooth: mean(base.slice(Math.max(0, i - 6), i + 1).map(x => x.count)) }));
-    const current = mean(base.slice(chosen - 6, chosen + 1).map(d => d.count));
+    const currentWeek = mean(base.slice(chosen - 6, chosen + 1).map(d => d.count));
     const previous = mean(base.slice(chosen - 13, chosen - 6).map(d => d.count));
-    const slope = (current - previous) / 7;
-    const relChange = (current - previous) / Math.max(previous, 1);
-    const residuals = [...base.slice(chosen - 13, chosen - 6).map(d => d.count - previous), ...base.slice(chosen - 6, chosen + 1).map(d => d.count - current)];
+    const fit = smooth.slice(chosen - 13, chosen + 1);
+    const xMean = 6.5;
+    const yMean = mean(fit.map(d => d.smooth));
+    const linearSlope = fit.reduce((sum, d, i) => sum + (i - xMean) * (d.smooth - yMean), 0) / fit.reduce((sum, _d, i) => sum + (i - xMean) ** 2, 0);
+    const linearLevel = yMean + linearSlope * (13 - xMean);
+    const current = modelType === 'linear' ? Math.max(0, linearLevel) : currentWeek;
+    const slope = modelType === 'linear' ? linearSlope : (currentWeek - previous) / 7;
+    const relChange = modelType === 'linear' ? (slope * 7) / Math.max(current, 1) : (currentWeek - previous) / Math.max(previous, 1);
+    const residuals = modelType === 'linear' ? fit.map((d, i) => d.smooth - (linearLevel + linearSlope * (i - 13))) : [...base.slice(chosen - 13, chosen - 6).map(d => d.count - previous), ...base.slice(chosen - 6, chosen + 1).map(d => d.count - currentWeek)];
     const sigma = Math.max(1, Math.sqrt(mean(residuals.map(x => x * x))));
     const start = Math.max(0, chosen - 83);
     const observed = smooth.slice(start, chosen + 1).map(d => ({ ...d, observed: d.count }));
@@ -47,7 +54,11 @@ export default function Home() {
     for (let i = Math.max(14, chosen - 90); i <= chosen - 7; i++) {
       const cur = mean(base.slice(i - 6, i + 1).map(d => d.count));
       const prev = mean(base.slice(i - 13, i - 6).map(d => d.count));
-      const predicted = Math.max(0, cur + (cur - prev));
+      const localFit = smooth.slice(i - 13, i + 1);
+      const localMean = mean(localFit.map(d => d.smooth));
+      const localSlope = localFit.reduce((sum, d, j) => sum + (j - 6.5) * (d.smooth - localMean), 0) / localFit.reduce((sum, _d, j) => sum + (j - 6.5) ** 2, 0);
+      const localLevel = localMean + localSlope * 6.5;
+      const predicted = modelType === 'linear' ? Math.max(0, localLevel + localSlope * 7) : Math.max(0, cur + (cur - prev));
       btErrors.push(Math.abs(smooth[i + 7].smooth - predicted));
     }
     const mae = mean(btErrors);
@@ -56,7 +67,7 @@ export default function Home() {
     const reliabilityScore = clamp(1 - (nmae - .2) / .4, 0, 1);
     const alert = relChange > .5 ? 'Red' : relChange > .2 ? 'Yellow' : 'Green';
     return { chart: [...observed, ...predictions], current, previous, slope, relChange, mae, nmae, reliabilityScore, alert, date: base[chosen].date, maxDate: base[base.length - 15].date };
-  }, [data, region, pathogen, analysisDate]);
+  }, [data, region, pathogen, analysisDate, modelType]);
 
   function moveDate(days: number) {
     if (!result || !data) return;
@@ -83,12 +94,12 @@ export default function Home() {
         <label>Region<select value={region} onChange={e => setRegion(e.target.value)}>{data.regions.map(x => <option key={x}>{x}</option>)}</select></label>
         <label>Pathogen<select value={pathogen} onChange={e => setPathogen(e.target.value)}>{data.pathogens.map(x => <option key={x}>{x}</option>)}</select></label>
         <div className="date-control"><span>Historical replay</span><div><button aria-label="Previous week" onClick={() => moveDate(-7)}><ChevronLeft size={17}/></button><input type="date" value={result.date} min={data.meta.dateRange[0]} max={result.maxDate} onChange={e => setAnalysisDate(e.target.value)}/><button aria-label="Next week" onClick={() => moveDate(7)}><ChevronRight size={17}/></button></div></div>
-        <label>Model<select disabled><option>Week-over-week</option></select></label>
+        <label>Model<select value={modelType} onChange={e => setModelType(e.target.value as 'weekoverweek' | 'linear')}><option value="weekoverweek">Week-over-week</option><option value="linear">Local linear trend</option></select></label>
       </div>
 
       <div className="metrics">
         <article><span>Current level</span><strong>{result.current.toFixed(1)}</strong><small>encounters per day</small></article>
-        <article><span>Weekly change</span><strong className={result.relChange >= 0 ? 'up' : 'down'}>{result.relChange >= 0 ? '+' : ''}{(result.relChange * 100).toFixed(0)}%</strong><small>versus previous week</small></article>
+        <article><span>7-day change</span><strong className={result.relChange >= 0 ? 'up' : 'down'}>{result.relChange >= 0 ? '+' : ''}{(result.relChange * 100).toFixed(0)}%</strong><small>{modelType === 'linear' ? 'model projection' : 'versus previous week'}</small></article>
         <article><span>Trend</span><strong>{trendWord}</strong><small>{Math.abs(result.slope).toFixed(2)} encounters/day²</small></article>
         <article><span>Alert</span><strong className={`alert ${result.alert.toLowerCase()}`}><i></i>{result.alert}</strong><small>20% / 50% thresholds</small></article>
         <article><span>Forecast reliability</span><strong>{reliabilityWord}</strong><small>{(result.reliabilityScore * 100).toFixed(0)}% score · NMAE {(result.nmae * 100).toFixed(0)}%</small></article>
@@ -98,7 +109,7 @@ export default function Home() {
         <article className="chart-card"><div className="card-head"><div><h2>Activity and short-term forecast</h2><p>Real-time view uses only observations available on the analysis date.</p></div><div className="legend"><span className="dot observed"></span>Daily encounters <span className="line smooth"></span>7-day mean <span className="line forecast"></span>Forecast</div></div>
           <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={result.chart} margin={{top:18,right:20,bottom:4,left:-12}}><CartesianGrid stroke="#dbe5e2" strokeDasharray="3 5" vertical={false}/><XAxis dataKey="date" tickFormatter={v => shortFmt.format(new Date(`${v}T12:00:00`))} minTickGap={38} tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11,fill:'#62716e'}} axisLine={false} tickLine={false}/><Tooltip labelFormatter={dateLabel} contentStyle={{borderRadius:10,border:'1px solid #dbe5e2'}}/><Area dataKey="bandRange" stroke="none" fill="#a6c9c3" fillOpacity={.28}/><Line dataKey="observed" stroke="#a9b6b3" strokeWidth={0} dot={{r:2.3,fill:'#768581',stroke:'none'}} isAnimationActive={false}/><Line dataKey="smooth" stroke="#123f3a" strokeWidth={2.6} dot={false} connectNulls isAnimationActive={false}/><Line dataKey="prediction" stroke="#d16f3f" strokeWidth={2.8} strokeDasharray="7 5" dot={false} connectNulls isAnimationActive={false}/><ReferenceLine x={result.date} stroke="#8d9a97" strokeDasharray="3 4" label={{value:'Analysis date',position:'insideTopLeft',fill:'#62716e',fontSize:11}}/></ComposedChart></ResponsiveContainer></div>
         </article>
-        <aside className="insight-card"><div className="insight-icon"><TrendingUp size={19}/></div><p className="eyebrow">Model interpretation</p><h2>The last week was {Math.abs(result.relChange * 100).toFixed(0)}% {result.relChange >= 0 ? 'higher' : 'lower'} than the week before.</h2><p>The week-over-week model compares two complete seven-day periods, reducing sensitivity to weekday reporting patterns.</p><div className="reliability"><div><ShieldCheck size={18}/><span>Historical reliability<strong>{reliabilityWord}</strong></span></div><div className="meter"><i style={{width:`${result.reliabilityScore * 100}%`}}></i></div><small>Mean absolute error: {result.mae.toFixed(1)} encounters</small></div></aside>
+        <aside className="insight-card"><div className="insight-icon"><TrendingUp size={19}/></div><p className="eyebrow">Model interpretation</p><h2>{modelType === 'linear' ? `The local trend projects a ${Math.abs(result.relChange * 100).toFixed(0)}% ${result.relChange >= 0 ? 'increase' : 'decrease'} over seven days.` : `The last week was ${Math.abs(result.relChange * 100).toFixed(0)}% ${result.relChange >= 0 ? 'higher' : 'lower'} than the week before.`}</h2><p>{modelType === 'linear' ? 'The local linear model fits a straight line to the last 14 causal seven-day means.' : 'The week-over-week model compares two complete seven-day periods, reducing sensitivity to weekday reporting patterns.'}</p><div className="reliability"><div><ShieldCheck size={18}/><span>Historical reliability<strong>{reliabilityWord}</strong></span></div><div className="meter"><i style={{width:`${result.reliabilityScore * 100}%`}}></i></div><small>Mean absolute error: {result.mae.toFixed(1)} encounters</small></div></aside>
       </div>
       <footer><span>Aggregate data only · No personal identifiers included</span><span>{data.meta.dateRange[0]} — {data.meta.dateRange[1]}</span></footer>
     </section>

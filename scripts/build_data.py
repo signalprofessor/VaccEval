@@ -13,6 +13,7 @@ GROUPS = {
     "Pneumonia": {"J13", "J18", "J189"},
     "Bronchitis": {"J20", "J205", "J21", "J210"},
 }
+ALL_TOKENS = set().union(*GROUPS.values())
 REGION_NAMES = {"ro": "Östergötland", "rk": "Kalmar", "rj": "Jönköping"}
 
 def normalized_code(value: object) -> str:
@@ -49,6 +50,8 @@ def main() -> None:
         if region_code not in REGION_NAMES: continue
         code = normalized_code(row[index["ICD10KodNr"]])
         category = normalized_code(row[index["KategoriNr"]])
+        if code in ALL_TOKENS or category in ALL_TOKENS:
+            encounters[(event_date, region_code, "All viruses")].add(encounter)
         for group, tokens in GROUPS.items():
             if code in tokens or category in tokens:
                 encounters[(event_date, region_code, group)].add(encounter)
@@ -56,14 +59,19 @@ def main() -> None:
         last_date = event_date if last_date is None else max(last_date, event_date)
     if first_date is None or last_date is None: raise ValueError("No usable encounters found")
 
+    group_names = ["All viruses", *GROUPS]
     series = []
     current = first_date
     while current <= last_date:
         for region_code, region_name in REGION_NAMES.items():
-            for group in GROUPS:
+            for group in group_names:
                 series.append({"date": current.isoformat(), "region": region_name,
                                "pathogen": group,
                                "count": len(encounters[(current, region_code, group)])})
+        for group in group_names:
+            combined = set().union(*(encounters[(current, code, group)] for code in REGION_NAMES))
+            series.append({"date": current.isoformat(), "region": "All regions",
+                           "pathogen": group, "count": len(combined)})
         current += timedelta(days=1)
     payload = {
         "meta": {"sourceSnapshot": args.source.stem,
@@ -72,8 +80,9 @@ def main() -> None:
                  "sourceRows": source_rows,
                  "measure": "Unique healthcare encounters per day",
                  "privacy": "Only daily aggregate counts; no row-level fields or identifiers.",
-                 "countingRule": "One encounter per pathogen group, date, and region."},
-        "regions": list(REGION_NAMES.values()), "pathogens": list(GROUPS.keys()), "series": series}
+                 "countingRule": "One encounter per pathogen group, date, and region. All viruses is a deduplicated union."},
+        "regions": ["All regions", *REGION_NAMES.values()],
+        "pathogens": group_names, "series": series}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
     print(json.dumps({**payload["meta"], "records": len(series)}, ensure_ascii=False, indent=2))
