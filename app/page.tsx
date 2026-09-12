@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight,
+  Activity, AlertTriangle, CalendarDays, ChevronLeft, ChevronRight,
   Database, HeartPulse, LayoutDashboard, ShieldCheck, SlidersHorizontal, Syringe, TrendingUp,
 } from 'lucide-react';
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -17,7 +17,6 @@ type MortalityDatum={week:string;date:string;region:string;count:number};
 type MortalityData={meta:{dateRange:string[];sourceUpdatedAt:string;status:string};series:MortalityDatum[]};
 type Point={date:string;value:number};
 type Mode='clinical'|'wastewater'; type Model='weekoverweek'|'linear'; type ViewMode='monitor'|'explore';
-type Signal={region:string;pathogen:string;level:'Red'|'Yellow'|'Green'|'Not assessed';change:number|null;date:string};
 
 const fmt=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short',year:'numeric'});
 const shortFmt=new Intl.DateTimeFormat('en-GB',{day:'2-digit',month:'short'});
@@ -43,26 +42,9 @@ function analyse(base:Point[],requested:string,mode:Mode,model:Model){
   const mae=mean(errors),scale=Math.max(Number.EPSILON,mean(smooth.slice(start,chosen+1).map(d=>Math.abs(d.smooth)))),nmae=mae/scale,reliability=clamp(1-(nmae-.2)/.4,0,1),alert=relativeChangeAvailable?(relChange>.5?'Red':relChange>.2?'Yellow':'Green'):'Not assessed';return{chart:[...observed,...predictions],current,previous,slope,relChange,relativeChangeAvailable,mae,nmae,reliability,alert,date:base[chosen].date,maxDate:base[base.length-reserve-1].date};
 }
 
-function monitoringSignals(data:WWData):Signal[]{
-  const regions=data.regions.filter(x=>x!=='All regions');
-  const pathogens=data.pathogens;
-  return regions.flatMap(region=>pathogens.map(pathogen=>{
-    const values=data.series.filter(d=>d.region===region&&d.pathogen===pathogen).sort((a,b)=>a.date.localeCompare(b.date));
-    if(values.length<3)return{region,pathogen,level:'Not assessed' as const,change:null,date:values.at(-1)?.date||data.meta.dateRange[1]};
-    const last=mean(values.slice(-2).map(d=>d.value)),previous=mean(values.slice(-3,-1).map(d=>d.value));
-    const scale=mean(values.slice(-12).map(d=>Math.abs(d.value))),floor=Math.max(Number.EPSILON,scale*.01);
-    if(Math.abs(previous)<floor)return{region,pathogen,level:'Not assessed' as const,change:null,date:values.at(-1)!.date};
-    const change=(last-previous)/Math.abs(previous),level=change>.5?'Red':change>.2?'Yellow':'Green';
-    return{region,pathogen,level,change,date:values.at(-1)!.date};
-  }));
-}
-
 function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;ww:WWData;vaccination:VaccinationData;mortality:MortalityData}){
-  const signals=useMemo(()=>monitoringSignals(ww),[ww]);
-  const important=signals.filter(s=>s.level==='Red'||s.level==='Yellow').sort((a,b)=>(a.level==='Red'?0:1)-(b.level==='Red'?0:1));
-  const byPathogen=ww.pathogens.map(pathogen=>({pathogen,signals:important.filter(s=>s.pathogen===pathogen)})).filter(x=>x.signals.length);
-  const byRegion=ww.regions.filter(r=>r!=='All regions').map(region=>({region,signals:important.filter(s=>s.region===region)})).filter(x=>x.signals.length);
-  const virusOverview=ww.regions.filter(r=>r!=='All regions').map(region=>({region,viruses:ww.pathogens.map(pathogen=>{const values=ww.series.filter(d=>d.region===region&&d.pathogen===pathogen).sort((a,b)=>a.date.localeCompare(b.date));return{pathogen,value:mean(values.slice(-2).map(d=>d.value)),signal:signals.find(s=>s.region===region&&s.pathogen===pathogen)}})}));
+  const clinicalEnd=clinical.meta.dateRange[1],clinicalWeekStart=shift(clinicalEnd,-6);
+  const virusOverview=clinical.regions.filter(r=>r!=='All regions').map(region=>({region,viruses:clinical.pathogens.map(pathogen=>({pathogen,count:clinical.series.filter(d=>d.region===region&&d.pathogen===pathogen&&d.date>=clinicalWeekStart&&d.date<=clinicalEnd).reduce((sum,d)=>sum+d.count,0)}))}));
   const vaccine=vaccination.snapshots.at(-1)!;
   const maxCoverage=Math.max(...vaccine.records.map(r=>r.percent),1);
   const mortalityLatest=mortality.meta.dateRange[1];
@@ -77,11 +59,11 @@ function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;
     <div className="monitor-heading"><div><p className="eyebrow">Operational overview</p><h1>VaccEval Surveillance Monitor</h1><p>Latest aggregate signals for rapid situational awareness across three regions.</p></div><div className="monitor-time"><span>Last automated check</span><strong>{dateLabel(ww.meta.generatedAt.slice(0,10))}</strong></div></div>
     <div className="monitor-layout">
       <div className="monitor-main">
-        <section className="virus-panel"><div className="panel-title"><div><Activity size={18}/><span><strong>Virus activity overview</strong><small>Latest two-sample mean · PMMoV-normalized wastewater signal</small></span></div><span className="panel-date">Through {dateLabel(ww.meta.dateRange[1])}</span></div>
-          <div className="virus-grid">{virusOverview.map(group=><article key={group.region}><h3>{group.region}</h3>{group.viruses.map(item=><div className="virus-row" key={item.pathogen}><span>{item.pathogen}</span><strong>{item.value.toPrecision(3)}</strong><small className={item.signal?.level.toLowerCase().replace(' ','-')}>{item.signal?.change===null?'N/A':`${item.signal&&item.signal.change>=0?'+':''}${((item.signal?.change||0)*100).toFixed(0)}%`}</small></div>)}</article>)}</div>
+        <section className="virus-panel"><div className="panel-title"><div><Activity size={18}/><span><strong>Clinical activity overview</strong><small>Healthcare encounters during the latest seven-day period</small></span></div><span className="panel-date">Through {dateLabel(clinicalEnd)}</span></div>
+          <div className="virus-grid">{virusOverview.map(group=><article key={group.region}><h3>{group.region}</h3>{group.viruses.map(item=><div className="virus-row counts-only" key={item.pathogen}><span>{item.pathogen}</span><strong>{numberFmt.format(item.count)}</strong></div>)}</article>)}</div>
         </section>
-        <section className="warning-panel"><div className="panel-title"><div><AlertTriangle size={18}/><span><strong>Signals requiring attention</strong><small>Weekly wastewater change · 20% / 50% thresholds</small></span></div><span className={`warning-count ${important.length?'active':''}`}>{important.length}</span></div>
-          <div className="warning-columns"><WarningList title="By pathogen" empty="No pathogen warnings" items={byPathogen.map(group=>({title:group.pathogen,detail:group.signals.map(s=>s.region).join(' · '),level:group.signals.some(s=>s.level==='Red')?'Red':'Yellow'}))}/><WarningList title="By region" empty="No regional warnings" items={byRegion.map(group=>({title:group.region,detail:group.signals.map(s=>s.pathogen).join(' · '),level:group.signals.some(s=>s.level==='Red')?'Red':'Yellow'}))}/></div>
+        <section className="warning-panel paused"><div className="panel-title"><div><AlertTriangle size={18}/><span><strong>Signals requiring attention</strong><small>Changes and alerts resume when current clinical data are available</small></span></div><span className="warning-count">—</span></div>
+          <div className="alerts-paused"><ShieldCheck size={20}/><div><strong>Alerts paused</strong><p>The latest clinical snapshot ends {dateLabel(clinicalEnd)}. Percentage changes and warnings are hidden to avoid presenting stale data as current surveillance.</p></div></div>
         </section>
         <section className="vaccination-panel"><div className="panel-title"><div><Syringe size={18}/><span><strong>COVID-19 vaccination coverage</strong><small>Current seasonal coverage · FHM National Vaccination Register</small></span></div><span className="panel-date">{dateLabel(vaccine.snapshotDate)}</span></div>
           <div className="coverage-grid">{['Östergötland','Jönköping','Kalmar'].map(region=><article key={region}><h3>{region}</h3>{vaccine.records.filter(r=>r.region===region).map(record=><div className="coverage-row" key={record.ageGroup}><div><span>{record.ageGroup}</span><strong>{record.percent.toFixed(1)}%</strong></div><div className="coverage-track"><i style={{width:`${record.percent/maxCoverage*100}%`}}/></div><small>{numberFmt.format(record.count)} vaccinated</small></div>)}</article>)}</div>
@@ -95,8 +77,6 @@ function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;
     </div>
   </section>;
 }
-
-function WarningList({title,items,empty}:{title:string;items:{title:string;detail:string;level:string}[];empty:string}){return <div className="warning-list"><h3>{title}</h3>{items.length?items.map(item=><div className="warning-item" key={item.title}><i className={item.level.toLowerCase()}></i><span><strong>{item.title}</strong><small>{item.detail}</small></span><b>{item.level}</b></div>):<div className="empty-warning"><CheckCircle2 size={18}/><span>{empty}</span></div>}</div>}
 
 function ExploreView({clinical,ww}:{clinical:ClinicalData;ww:WWData}){
   const[mode,setMode]=useState<Mode>('clinical'),[region,setRegion]=useState('Östergötland'),[pathogen,setPathogen]=useState('Influenza'),[analysisDate,setAnalysisDate]=useState('2025-02-15'),[model,setModel]=useState<Model>('weekoverweek');
