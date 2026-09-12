@@ -41,6 +41,8 @@ def main() -> None:
     source_rows = 0
     first_date: date | None = None
     last_date: date | None = None
+    region_first: dict[str, date] = {}
+    region_last: dict[str, date] = {}
     for row in rows:
         source_rows += 1
         encounter = str(row[index["KontaktID"]] or "").strip()
@@ -48,6 +50,8 @@ def main() -> None:
         if not encounter or event_date is None: continue
         region_code = encounter.split("_", 1)[0].lower()
         if region_code not in REGION_NAMES: continue
+        region_first[region_code] = min(region_first.get(region_code, event_date), event_date)
+        region_last[region_code] = max(region_last.get(region_code, event_date), event_date)
         code = normalized_code(row[index["ICD10KodNr"]])
         category = normalized_code(row[index["KategoriNr"]])
         if code in ALL_TOKENS or category in ALL_TOKENS:
@@ -77,6 +81,8 @@ def main() -> None:
         "meta": {"sourceSnapshot": args.source.stem,
                  "generatedAt": datetime.now().astimezone().isoformat(timespec="seconds"),
                  "dateRange": [first_date.isoformat(), last_date.isoformat()],
+                 "regionDateRanges": {REGION_NAMES[code]: [region_first[code].isoformat(), region_last[code].isoformat()]
+                                      for code in REGION_NAMES},
                  "sourceRows": source_rows,
                  "measure": "Unique healthcare encounters per day",
                  "privacy": "Only daily aggregate counts; no row-level fields or identifiers.",

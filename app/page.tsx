@@ -9,7 +9,7 @@ import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveCont
 
 type ClinicalDatum={date:string;region:string;pathogen:string;count:number};
 type WWDatum={date:string;region:string;pathogen:string;value:number};
-type ClinicalData={meta:{sourceSnapshot:string;dateRange:string[]};regions:string[];pathogens:string[];series:ClinicalDatum[]};
+type ClinicalData={meta:{sourceSnapshot:string;dateRange:string[];regionDateRanges?:Record<string,string[]>};regions:string[];pathogens:string[];series:ClinicalDatum[]};
 type WWData={meta:{dateRange:string[];generatedAt:string;methodChangeDate:string};regions:string[];pathogens:string[];series:WWDatum[]};
 type VaccinationRecord={region:string;ageGroup:string;count:number;percent:number};
 type VaccinationData={meta:{generatedAt:string;scope:string};snapshots:{snapshotDate:string;sourceUpdatedAt:string;records:VaccinationRecord[]}[]};
@@ -43,8 +43,8 @@ function analyse(base:Point[],requested:string,mode:Mode,model:Model){
 }
 
 function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;ww:WWData;vaccination:VaccinationData;mortality:MortalityData}){
-  const clinicalEnd=clinical.meta.dateRange[1],clinicalWeekStart=shift(clinicalEnd,-6);
-  const virusOverview=clinical.regions.filter(r=>r!=='All regions').map(region=>({region,viruses:clinical.pathogens.map(pathogen=>({pathogen,count:clinical.series.filter(d=>d.region===region&&d.pathogen===pathogen&&d.date>=clinicalWeekStart&&d.date<=clinicalEnd).reduce((sum,d)=>sum+d.count,0)}))}));
+  const virusOverview=clinical.regions.filter(r=>r!=='All regions').map(region=>{const end=clinical.meta.regionDateRanges?.[region]?.[1]||clinical.meta.dateRange[1],weekStart=shift(end,-6),previousStart=shift(end,-13),previousEnd=shift(end,-7);return{region,end,viruses:clinical.pathogens.map(pathogen=>{const rows=clinical.series.filter(d=>d.region===region&&d.pathogen===pathogen),count=rows.filter(d=>d.date>=weekStart&&d.date<=end).reduce((sum,d)=>sum+d.count,0),previous=rows.filter(d=>d.date>=previousStart&&d.date<=previousEnd).reduce((sum,d)=>sum+d.count,0),change=previous>=10&&count>=10?(count-previous)/previous:null;return{pathogen,count,change}})}});
+  const clinicalEnd=clinical.meta.dateRange[1];
   const vaccine=vaccination.snapshots.at(-1)!;
   const maxCoverage=Math.max(...vaccine.records.map(r=>r.percent),1);
   const mortalityLatest=mortality.meta.dateRange[1];
@@ -56,14 +56,13 @@ function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;
     {name:'Clinical research',date:clinical.meta.dateRange[1],state:'Snapshot',note:'Three-region dataset'},
   ];
   return <section className="monitor-workspace">
-    <div className="monitor-heading"><div><p className="eyebrow">Operational overview</p><h1>VaccEval Surveillance Monitor</h1><p>Latest aggregate signals for rapid situational awareness across three regions.</p></div><div className="monitor-time"><span>Last automated check</span><strong>{dateLabel(ww.meta.generatedAt.slice(0,10))}</strong></div></div>
     <div className="monitor-layout">
       <div className="monitor-main">
-        <section className="virus-panel"><div className="panel-title"><div><Activity size={18}/><span><strong>Clinical activity overview</strong><small>Healthcare encounters during the latest seven-day period</small></span></div><span className="panel-date">Through {dateLabel(clinicalEnd)}</span></div>
-          <div className="virus-grid">{virusOverview.map(group=><article key={group.region}><h3>{group.region}</h3>{group.viruses.map(item=><div className="virus-row counts-only" key={item.pathogen}><span>{item.pathogen}</span><strong>{numberFmt.format(item.count)}</strong></div>)}</article>)}</div>
+        <section className="virus-panel"><div className="panel-title"><div><Activity size={18}/><span><strong>Clinical activity overview</strong><small>Healthcare encounters during each region’s latest complete seven-day period</small></span></div></div>
+          <div className="clinical-matrix"><div className="matrix-head"><span>Indicator</span>{virusOverview.map(group=><span key={group.region}><strong>{group.region}</strong><small>to {shortFmt.format(new Date(`${group.end}T12:00:00`))}</small></span>)}</div>{clinical.pathogens.map(pathogen=><div className="matrix-row" key={pathogen}><strong>{pathogen}</strong>{virusOverview.map(group=>{const item=group.viruses.find(v=>v.pathogen===pathogen)!;return <span key={group.region}><b>{numberFmt.format(item.count)}</b><small className={item.change===null?'not-assessed':item.change>.5?'red':item.change>.2?'yellow':'green'}>{item.change===null?'N/A':`${item.change>=0?'+':''}${(item.change*100).toFixed(0)}%`}</small></span>})}</div>)}</div>
         </section>
         <section className="warning-panel paused"><div className="panel-title"><div><AlertTriangle size={18}/><span><strong>Signals requiring attention</strong><small>Changes and alerts resume when current clinical data are available</small></span></div><span className="warning-count">—</span></div>
-          <div className="alerts-paused"><ShieldCheck size={20}/><div><strong>Alerts paused</strong><p>The latest clinical snapshot ends {dateLabel(clinicalEnd)}. Percentage changes and warnings are hidden to avoid presenting stale data as current surveillance.</p></div></div>
+          <div className="alerts-paused"><ShieldCheck size={20}/><div><strong>Current alerts paused</strong><p>The clinical snapshot ends {dateLabel(clinicalEnd)}. Historical percentages remain visible when both seven-day periods contain at least 10 encounters; low-count comparisons are marked N/A.</p></div></div>
         </section>
         <section className="vaccination-panel"><div className="panel-title"><div><Syringe size={18}/><span><strong>COVID-19 vaccination coverage</strong><small>Current seasonal coverage · FHM National Vaccination Register</small></span></div><span className="panel-date">{dateLabel(vaccine.snapshotDate)}</span></div>
           <div className="coverage-grid">{['Östergötland','Jönköping','Kalmar'].map(region=><article key={region}><h3>{region}</h3>{vaccine.records.filter(r=>r.region===region).map(record=><div className="coverage-row" key={record.ageGroup}><div><span>{record.ageGroup}</span><strong>{record.percent.toFixed(1)}%</strong></div><div className="coverage-track"><i style={{width:`${record.percent/maxCoverage*100}%`}}/></div><small>{numberFmt.format(record.count)} vaccinated</small></div>)}</article>)}</div>
@@ -100,6 +99,6 @@ export default function Home(){
     fetch('/data/vaccination.json').then(r=>r.json()),fetch('/data/mortality.json').then(r=>r.json()),
   ]).then(([a,b,c,d])=>{setClinical(a);setWW(b);setVaccination(c);setMortality(d)})},[]);
   if(!clinical||!ww||!vaccination||!mortality)return<main className="loading">Loading VaccEval surveillance data…</main>;
-  return <main className="app-shell"><header className="topbar"><div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>VaccEval</strong><span>Infectious disease surveillance</span></div></div><nav className="view-switch" aria-label="Workspace mode"><button className={view==='monitor'?'selected':''} onClick={()=>setView('monitor')}><LayoutDashboard size={15}/>Monitor</button><button className={view==='explore'?'selected':''} onClick={()=>setView('explore')}><SlidersHorizontal size={15}/>Explore</button></nav><div className="status"><span></span>Automated aggregate surveillance</div><button className="method">Methodology</button></header>
+  return <main className="app-shell"><header className="topbar"><div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>{view==='monitor'?'VaccEval Surveillance Monitor':'VaccEval'}</strong><span>{view==='monitor'?'Aggregate decision support':'Infectious disease surveillance'}</span></div></div><nav className="view-switch" aria-label="Workspace mode"><button className={view==='monitor'?'selected':''} onClick={()=>setView('monitor')}><LayoutDashboard size={15}/>Monitor</button><button className={view==='explore'?'selected':''} onClick={()=>setView('explore')}><SlidersHorizontal size={15}/>Explore</button></nav><div className="status"><span></span>Automated aggregate surveillance</div><button className="method">Methodology</button></header>
   {view==='monitor'?<MonitorView clinical={clinical} ww={ww} vaccination={vaccination} mortality={mortality}/>:<ExploreView clinical={clinical} ww={ww}/>}<div className="acknowledgement">VaccEval results · Developed and maintained by <a href="https://signalprofessor.se" target="_blank" rel="noreferrer">Signalprofessor</a>.</div></main>;
 }
