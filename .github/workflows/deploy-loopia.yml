@@ -18,12 +18,13 @@ jobs:
 
     steps:
       - name: Check out VaccEval
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v7.0.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v7.0.0
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Enable pnpm
         run: corepack enable
