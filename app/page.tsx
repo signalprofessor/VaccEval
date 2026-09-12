@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity, AlertTriangle, CalendarDays, ChevronLeft, ChevronRight,
-  Database, HeartPulse, LayoutDashboard, ShieldCheck, SlidersHorizontal, Syringe, TrendingUp,
+  Database, HeartPulse, LayoutDashboard, ShieldCheck, SlidersHorizontal, Syringe, TrendingUp, X,
 } from 'lucide-react';
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
@@ -92,13 +92,28 @@ function ExploreView({clinical,ww}:{clinical:ClinicalData;ww:WWData}){
   <footer><span>{isWW?'Open aggregate environmental surveillance data · No individual records':'Aggregate counts only · No personal identifiers included'}</span><span>{active.meta.dateRange[0]} — {active.meta.dateRange[1]}</span></footer></section>;
 }
 
+function MethodologyPanel({clinical,ww,vaccination,mortality,onClose}:{clinical:ClinicalData;ww:WWData;vaccination:VaccinationData;mortality:MortalityData;onClose:()=>void}){
+  useEffect(()=>{const close=(event:KeyboardEvent)=>{if(event.key==='Escape')onClose()};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[onClose]);
+  const vaccine=vaccination.snapshots.at(-1)!;
+  return <div className="method-backdrop" onMouseDown={onClose}><aside className="method-panel" role="dialog" aria-modal="true" aria-labelledby="method-title" onMouseDown={event=>event.stopPropagation()}><header><div><p className="eyebrow">How to interpret VaccEval</p><h2 id="method-title">Methodology</h2></div><button aria-label="Close methodology" onClick={onClose}><X size={18}/></button></header>
+    <div className="method-content">
+      <section><h3>Monitoring view</h3><p>The clinical matrix shows unique healthcare encounters during each region’s latest complete seven-day period. Regional end dates are retained separately, so missing dates are never treated as zero activity.</p></section>
+      <section><h3>Change percentages</h3><p>Each percentage compares two consecutive, non-overlapping seven-day periods. A percentage is shown only when both periods contain at least 10 encounters; otherwise it is marked <strong>N/A</strong> because small denominators can produce misleading changes.</p></section>
+      <section><h3>Warnings</h3><p>Yellow indicates an increase above 20% and red an increase above 50%. Current warnings are paused when the underlying clinical snapshot is stale. Historical percentages may still be displayed, but they are not presented as current alerts.</p></section>
+      <section><h3>Exploratory models</h3><p>Clinical analyses use either week-over-week comparison or a local linear trend fitted to the latest 14 causal seven-day means. Wastewater uses a two-sample causal mean and a short weekly projection. Forecast reliability summarizes historical prediction error for the selected series.</p></section>
+      <section><h3>Sources and latest coverage</h3><dl><div><dt>Clinical</dt><dd>Regional aggregate snapshot · through {dateLabel(clinical.meta.dateRange[1])}</dd></div><div><dt>Wastewater</dt><dd>SLU/SEEC · through {dateLabel(ww.meta.dateRange[1])}</dd></div><div><dt>Vaccination</dt><dd>FHM National Vaccination Register · {dateLabel(vaccine.snapshotDate)}</dd></div><div><dt>Mortality</dt><dd>SCB preliminary weekly deaths · through {dateLabel(mortality.meta.dateRange[1])}</dd></div></dl></section>
+      <section className="method-caution"><h3>Limitations</h3><p>Signals support situational awareness; they do not establish causality or replace epidemiological and clinical assessment. Reporting delays, revisions, changing laboratory methods and healthcare-seeking behaviour can affect comparisons.</p></section>
+      <section className="method-privacy"><ShieldCheck size={18}/><div><h3>Privacy</h3><p>Only aggregate counts and derived indicators are published. Raw records and personal identifiers are not sent to the browser.</p></div></section>
+    </div></aside></div>;
+}
+
 export default function Home(){
-  const[clinical,setClinical]=useState<ClinicalData|null>(null),[ww,setWW]=useState<WWData|null>(null),[vaccination,setVaccination]=useState<VaccinationData|null>(null),[mortality,setMortality]=useState<MortalityData|null>(null),[view,setView]=useState<ViewMode>('monitor');
+  const[clinical,setClinical]=useState<ClinicalData|null>(null),[ww,setWW]=useState<WWData|null>(null),[vaccination,setVaccination]=useState<VaccinationData|null>(null),[mortality,setMortality]=useState<MortalityData|null>(null),[view,setView]=useState<ViewMode>('monitor'),[methodOpen,setMethodOpen]=useState(false);
   useEffect(()=>{Promise.all([
     fetch('/data/vacceval.json').then(r=>r.json()),fetch('/data/wastewater.json').then(r=>r.json()),
     fetch('/data/vaccination.json').then(r=>r.json()),fetch('/data/mortality.json').then(r=>r.json()),
   ]).then(([a,b,c,d])=>{setClinical(a);setWW(b);setVaccination(c);setMortality(d)})},[]);
   if(!clinical||!ww||!vaccination||!mortality)return<main className="loading">Loading VaccEval surveillance data…</main>;
-  return <main className="app-shell"><header className="topbar"><div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>{view==='monitor'?'VaccEval Surveillance Monitor':'VaccEval'}</strong><span>{view==='monitor'?'Aggregate decision support':'Infectious disease surveillance'}</span></div></div><nav className="view-switch" aria-label="Workspace mode"><button className={view==='monitor'?'selected':''} onClick={()=>setView('monitor')}><LayoutDashboard size={15}/>Monitor</button><button className={view==='explore'?'selected':''} onClick={()=>setView('explore')}><SlidersHorizontal size={15}/>Explore</button></nav><div className="status"><span></span>Automated aggregate surveillance</div><button className="method">Methodology</button></header>
-  {view==='monitor'?<MonitorView clinical={clinical} ww={ww} vaccination={vaccination} mortality={mortality}/>:<ExploreView clinical={clinical} ww={ww}/>}<div className="acknowledgement">VaccEval results · Developed and maintained by <a href="https://signalprofessor.se" target="_blank" rel="noreferrer">Signalprofessor</a>.</div></main>;
+  return <main className="app-shell"><header className="topbar"><div className="brand"><span className="brand-mark"><Activity size={19}/></span><div><strong>{view==='monitor'?'VaccEval Surveillance Monitor':'VaccEval'}</strong><span>{view==='monitor'?'Aggregate decision support':'Infectious disease surveillance'}</span></div></div><nav className="view-switch" aria-label="Workspace mode"><button className={view==='monitor'?'selected':''} onClick={()=>setView('monitor')}><LayoutDashboard size={15}/>Monitor</button><button className={view==='explore'?'selected':''} onClick={()=>setView('explore')}><SlidersHorizontal size={15}/>Explore</button></nav><div className="status"><span></span>Automated aggregate surveillance</div><button className="method" onClick={()=>setMethodOpen(true)}>Methodology</button></header>
+  {view==='monitor'?<MonitorView clinical={clinical} ww={ww} vaccination={vaccination} mortality={mortality}/>:<ExploreView clinical={clinical} ww={ww}/>}<div className="acknowledgement">VaccEval results · Developed and maintained by <a href="https://signalprofessor.se" target="_blank" rel="noreferrer">Signalprofessor</a>.</div>{methodOpen&&<MethodologyPanel clinical={clinical} ww={ww} vaccination={vaccination} mortality={mortality} onClose={()=>setMethodOpen(false)}/>}</main>;
 }
