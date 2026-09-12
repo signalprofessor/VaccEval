@@ -9,6 +9,7 @@ for forbidden in ('PersonID','KontaktID','Födelsedatum'):
     for file in a.source.rglob('*'):
         if file.is_file() and file.suffix.lower() in {'.html','.js','.json','.css','.txt'}:
             if forbidden in file.read_text(errors='ignore'): raise SystemExit(f'Privacy check failed: {forbidden} in {file}')
+a.output.parent.mkdir(parents=True,exist_ok=True)
 with ZipFile(a.output,'w',ZIP_DEFLATED) as z:
     for file in sorted(a.source.rglob('*')):
         if file.is_file(): z.write(file,file.relative_to(a.source))
