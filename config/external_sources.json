@@ -44,6 +44,21 @@
       "contents_code": "000007SS",
       "maximum_age_days": 70,
       "maximum_bytes": 5000000
+    },
+    {
+      "id": "fhm_covid_vaccination",
+      "name": "FHM COVID-19 vaccination coverage",
+      "format": "fhm-pxweb-v1",
+      "table_url": "https://fohm-app.folkhalsomyndigheten.se/Folkhalsodata/api/v1/sv/A_Folkhalsodata/L_Vaccin/Covid19/covvaccreg.px",
+      "published_output": "public/data/vaccination.json",
+      "regions": {
+        "05": "Östergötland",
+        "06": "Jönköping",
+        "08": "Kalmar"
+      },
+      "required_age_codes": ["3", "4", "5"],
+      "maximum_age_days": 300,
+      "maximum_bytes": 5000000
     }
   ]
 }

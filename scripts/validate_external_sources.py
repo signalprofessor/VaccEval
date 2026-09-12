@@ -11,6 +11,9 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlencode
 
+from fetch_fhm_vaccination import query as query_fhm_vaccination
+from fetch_fhm_vaccination import snapshot as parse_fhm_vaccination
+
 
 def load_published_date(path: Path) -> str:
     payload = json.loads(path.read_text())
@@ -111,6 +114,38 @@ def validate_scb_pxweb_v2(source: dict) -> dict:
     }
 
 
+def validate_fhm_pxweb_v1(source: dict) -> dict:
+    metadata_raw = download(source["table_url"], source["maximum_bytes"])
+    metadata = json.loads(metadata_raw)
+    variables = {variable["code"]: variable for variable in metadata["variables"]}
+    for code in source["regions"]:
+        if code not in variables["Region"]["values"]:
+            raise ValueError(f"missing region code: {code}")
+    if missing := set(source["required_age_codes"]) - set(variables["Åldersgrupp"]["values"]):
+        raise ValueError(f"missing age codes: {', '.join(sorted(missing))}")
+
+    current = parse_fhm_vaccination(query_fhm_vaccination())
+    age = (date.today() - date.fromisoformat(current["snapshotDate"])).days
+    if age > source["maximum_age_days"]:
+        raise ValueError(f"latest snapshot is {age} days old (limit {source['maximum_age_days']})")
+    published = None
+    output = Path(source["published_output"])
+    if output.exists():
+        snapshots = json.loads(output.read_text()).get("snapshots", [])
+        if snapshots:
+            published = snapshots[-1]["snapshotDate"]
+    encoded = json.dumps(current, ensure_ascii=False, sort_keys=True).encode()
+    return {
+        "rows": len(current["records"]),
+        "latest": current["snapshotDate"],
+        "published": published or "Not yet imported",
+        "comparison": "New data available" if published and current["snapshotDate"] > published else ("No newer observations" if published else "Ready for snapshot import"),
+        "detail": f"{len(source['regions'])} regions · 3 age groups · aggregate counts and percentages",
+        "bytes": len(metadata_raw) + len(encoded),
+        "sha256": hashlib.sha256(metadata_raw + encoded).hexdigest(),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registry", type=Path, default=Path("config/external_sources.json"))
@@ -135,6 +170,8 @@ def main() -> None:
                 })
             elif source["format"] == "scb-pxweb-v2":
                 results.append({"name": source["name"], "status": "Valid", **validate_scb_pxweb_v2(source)})
+            elif source["format"] == "fhm-pxweb-v1":
+                results.append({"name": source["name"], "status": "Valid", **validate_fhm_pxweb_v1(source)})
             else:
                 raise ValueError(f"unsupported format: {source['format']}")
         except Exception as exc:
