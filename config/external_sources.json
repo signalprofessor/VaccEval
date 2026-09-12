@@ -1,0 +1,32 @@
+{
+  "sources": [
+    {
+      "id": "slu_seec_wastewater",
+      "name": "SLU/SEEC wastewater",
+      "url": "https://blobserver.dc.scilifelab.se/blob/new_slu_ww_data.csv",
+      "format": "csv",
+      "published_output": "public/data/wastewater.json",
+      "date_column": "sampling_date",
+      "required_columns": [
+        "target",
+        "sample",
+        "sampling_date",
+        "city",
+        "inhabitants",
+        "pmmov_normalised"
+      ],
+      "required_targets": [
+        "SARS CoV-2",
+        "Influenza A virus",
+        "Influenza B virus",
+        "RSV",
+        "Norovirus GII",
+        "PMMoV"
+      ],
+      "required_cities": ["Linkoping", "Kalmar", "Jonkoping"],
+      "minimum_rows": 1000,
+      "maximum_age_days": 21,
+      "maximum_bytes": 20000000
+    }
+  ]
+}

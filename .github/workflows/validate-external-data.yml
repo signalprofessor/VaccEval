@@ -1,0 +1,40 @@
+name: Validate external data
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - config/external_sources.json
+      - scripts/validate_external_sources.py
+      - .github/workflows/validate-external-data.yml
+  schedule:
+    - cron: "17 0 * * *"
+      timezone: Europe/Stockholm
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vacceval-external-data-validation
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Download and validate all sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out VaccEval
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate registered external sources
+        shell: bash
+        run: |
+          set +e
+          python3 scripts/validate_external_sources.py
+          status=$?
+          cat output/external-data-validation.md >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
