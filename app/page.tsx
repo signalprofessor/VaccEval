@@ -45,7 +45,7 @@ function analyse(base:Point[],requested:string,mode:Mode,model:Model){
 
 function monitoringSignals(data:WWData):Signal[]{
   const regions=data.regions.filter(x=>x!=='All regions');
-  const pathogens=data.pathogens.filter(x=>x!=='Influenza A'&&x!=='Influenza B');
+  const pathogens=data.pathogens;
   return regions.flatMap(region=>pathogens.map(pathogen=>{
     const values=data.series.filter(d=>d.region===region&&d.pathogen===pathogen).sort((a,b)=>a.date.localeCompare(b.date));
     if(values.length<3)return{region,pathogen,level:'Not assessed' as const,change:null,date:values.at(-1)?.date||data.meta.dateRange[1]};
@@ -60,8 +60,9 @@ function monitoringSignals(data:WWData):Signal[]{
 function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;ww:WWData;vaccination:VaccinationData;mortality:MortalityData}){
   const signals=useMemo(()=>monitoringSignals(ww),[ww]);
   const important=signals.filter(s=>s.level==='Red'||s.level==='Yellow').sort((a,b)=>(a.level==='Red'?0:1)-(b.level==='Red'?0:1));
-  const byPathogen=ww.pathogens.filter(p=>!['Influenza A','Influenza B'].includes(p)).map(pathogen=>({pathogen,signals:important.filter(s=>s.pathogen===pathogen)})).filter(x=>x.signals.length);
+  const byPathogen=ww.pathogens.map(pathogen=>({pathogen,signals:important.filter(s=>s.pathogen===pathogen)})).filter(x=>x.signals.length);
   const byRegion=ww.regions.filter(r=>r!=='All regions').map(region=>({region,signals:important.filter(s=>s.region===region)})).filter(x=>x.signals.length);
+  const virusOverview=ww.regions.filter(r=>r!=='All regions').map(region=>({region,viruses:ww.pathogens.map(pathogen=>{const values=ww.series.filter(d=>d.region===region&&d.pathogen===pathogen).sort((a,b)=>a.date.localeCompare(b.date));return{pathogen,value:mean(values.slice(-2).map(d=>d.value)),signal:signals.find(s=>s.region===region&&s.pathogen===pathogen)}})}));
   const vaccine=vaccination.snapshots.at(-1)!;
   const maxCoverage=Math.max(...vaccine.records.map(r=>r.percent),1);
   const mortalityLatest=mortality.meta.dateRange[1];
@@ -73,9 +74,12 @@ function MonitorView({clinical,ww,vaccination,mortality}:{clinical:ClinicalData;
     {name:'Clinical research',date:clinical.meta.dateRange[1],state:'Snapshot',note:'Three-region dataset'},
   ];
   return <section className="monitor-workspace">
-    <div className="monitor-heading"><div><p className="eyebrow">Operational overview</p><h1>Respiratory surveillance monitor</h1><p>Latest aggregate signals for rapid situational awareness across three regions.</p></div><div className="monitor-time"><span>Last automated check</span><strong>{dateLabel(ww.meta.generatedAt.slice(0,10))}</strong></div></div>
+    <div className="monitor-heading"><div><p className="eyebrow">Operational overview</p><h1>VaccEval Surveillance Monitor</h1><p>Latest aggregate signals for rapid situational awareness across three regions.</p></div><div className="monitor-time"><span>Last automated check</span><strong>{dateLabel(ww.meta.generatedAt.slice(0,10))}</strong></div></div>
     <div className="monitor-layout">
       <div className="monitor-main">
+        <section className="virus-panel"><div className="panel-title"><div><Activity size={18}/><span><strong>Virus activity overview</strong><small>Latest two-sample mean · PMMoV-normalized wastewater signal</small></span></div><span className="panel-date">Through {dateLabel(ww.meta.dateRange[1])}</span></div>
+          <div className="virus-grid">{virusOverview.map(group=><article key={group.region}><h3>{group.region}</h3>{group.viruses.map(item=><div className="virus-row" key={item.pathogen}><span>{item.pathogen}</span><strong>{item.value.toPrecision(3)}</strong><small className={item.signal?.level.toLowerCase().replace(' ','-')}>{item.signal?.change===null?'N/A':`${item.signal&&item.signal.change>=0?'+':''}${((item.signal?.change||0)*100).toFixed(0)}%`}</small></div>)}</article>)}</div>
+        </section>
         <section className="warning-panel"><div className="panel-title"><div><AlertTriangle size={18}/><span><strong>Signals requiring attention</strong><small>Weekly wastewater change · 20% / 50% thresholds</small></span></div><span className={`warning-count ${important.length?'active':''}`}>{important.length}</span></div>
           <div className="warning-columns"><WarningList title="By pathogen" empty="No pathogen warnings" items={byPathogen.map(group=>({title:group.pathogen,detail:group.signals.map(s=>s.region).join(' · '),level:group.signals.some(s=>s.level==='Red')?'Red':'Yellow'}))}/><WarningList title="By region" empty="No regional warnings" items={byRegion.map(group=>({title:group.region,detail:group.signals.map(s=>s.pathogen).join(' · '),level:group.signals.some(s=>s.level==='Red')?'Red':'Yellow'}))}/></div>
         </section>
