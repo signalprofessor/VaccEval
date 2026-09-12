@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: vacceval-external-data-validation
@@ -38,3 +38,21 @@ jobs:
           status=$?
           cat output/external-data-validation.md >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
+
+      - name: Refresh compact public datasets
+        run: |
+          python3 scripts/fetch_wastewater.py public/data/wastewater.json
+          python3 scripts/fetch_scb_mortality.py public/data/mortality.json
+
+      - name: Commit source updates
+        shell: bash
+        run: |
+          if git diff --quiet -- public/data; then
+            echo "No published data changes" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/wastewater.json public/data/mortality.json
+          git commit -m "Update external surveillance data"
+          git push

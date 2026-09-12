@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  workflow_run:
+    workflows:
+      - Validate external data
+    types:
+      - completed
   workflow_dispatch:
 
 permissions:
@@ -15,6 +20,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Build, verify, and deploy
     runs-on: ubuntu-latest
     timeout-minutes: 15

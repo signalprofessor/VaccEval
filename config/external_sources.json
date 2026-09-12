@@ -33,6 +33,7 @@
       "name": "SCB weekly all-cause deaths",
       "format": "scb-pxweb-v2",
       "table_url": "https://statistikdatabasen.scb.se/api/v2/tables/TAB6474",
+      "published_output": "public/data/mortality.json",
       "regions": {
         "05": "Östergötlands län",
         "06": "Jönköpings län",

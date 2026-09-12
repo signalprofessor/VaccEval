@@ -17,6 +17,11 @@ def load_published_date(path: Path) -> str:
     return payload["meta"]["dateRange"][1]
 
 
+def load_published_period(path: Path) -> str:
+    payload = json.loads(path.read_text())
+    return payload["meta"]["periodRange"][1]
+
+
 def validate_csv(source: dict, raw: bytes) -> dict:
     text = raw.decode("utf-8-sig")
     first_line = text.splitlines()[0]
@@ -94,11 +99,12 @@ def validate_scb_pxweb_v2(source: dict) -> dict:
     if len(values) != len(source["regions"]) or any(not isinstance(value, (int, float)) for value in values):
         raise ValueError("unexpected or non-numeric regional values")
 
+    published = load_published_period(Path(source["published_output"])) if Path(source["published_output"]).exists() else None
     return {
         "rows": len(values),
         "latest": latest,
-        "published": "Not yet imported",
-        "comparison": "Ready for contextual import",
+        "published": published or "Not yet imported",
+        "comparison": "New data available" if published and latest > published else ("No newer observations" if published else "Ready for contextual import"),
         "detail": f"{len(source['regions'])} regions · all ages · both sexes · preliminary/revisable",
         "bytes": len(metadata_raw) + len(data_raw),
         "sha256": hashlib.sha256(metadata_raw + data_raw).hexdigest(),

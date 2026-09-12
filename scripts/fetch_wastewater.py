@@ -1,6 +1,6 @@
 """Download public SLU/SEEC wastewater data and publish a compact aggregate."""
 from __future__ import annotations
-import argparse, csv, io, json, urllib.request
+import argparse, csv, io, json, subprocess
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +16,19 @@ def number(value: str) -> float | None:
     try: return float(value)
     except (TypeError, ValueError): return None
 
+def write_if_changed(path: Path, payload: dict) -> bool:
+    if path.exists():
+        previous = json.loads(path.read_text())
+        previous["meta"].pop("generatedAt", None)
+        comparable = json.loads(json.dumps(payload))
+        comparable["meta"].pop("generatedAt", None)
+        if previous == comparable:
+            print("Wastewater data unchanged")
+            return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    return True
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
@@ -25,7 +38,11 @@ def main() -> None:
         raw = Path(args.source).read_bytes()
         source_label = Path(args.source).name
     else:
-        with urllib.request.urlopen(SOURCE_URL, timeout=60) as response: raw = response.read()
+        response = subprocess.run(
+            ["curl", "--fail", "--silent", "--show-error", "--location", "--max-time", "60", SOURCE_URL],
+            check=True, capture_output=True,
+        )
+        raw = response.stdout
         source_label = SOURCE_URL
     text = raw.decode("utf-8-sig")
     delimiter = ";" if text.splitlines()[0].count(";") > text.splitlines()[0].count(",") else ","
@@ -80,8 +97,7 @@ def main() -> None:
                          "dateRange": [dates[0], dates[-1]], "measure": "PMMoV-normalized viral concentration",
                          "methodChangeDate": "2026-08-31"},
                "regions": regions, "pathogens": pathogens, "series": series}
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
-    print(json.dumps({**payload["meta"], "records": len(series)}, indent=2))
+    changed = write_if_changed(args.output, payload)
+    print(json.dumps({**payload["meta"], "records": len(series), "changed": changed}, indent=2))
 
 if __name__ == "__main__": main()
