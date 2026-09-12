@@ -24,16 +24,18 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
-          cache: npm
+
+      - name: Enable pnpm
+        run: corepack enable
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Build static site
-        run: npm run build:loopia
+        run: pnpm run build:loopia
 
       - name: Run privacy check and package verification
-        run: npm run package:loopia
+        run: pnpm run package:loopia
 
       - name: Deploy to Loopia over encrypted FTP
         uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
