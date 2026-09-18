@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 from fetch_fhm_vaccination import query as query_fhm_vaccination
 from fetch_fhm_vaccination import snapshot as parse_fhm_vaccination
+from fetch_fhm_cases import fetch as fetch_fhm_cases
 
 
 def load_published_date(path: Path) -> str:
@@ -146,6 +147,26 @@ def validate_fhm_pxweb_v1(source: dict) -> dict:
     }
 
 
+def validate_fhm_cases(source: dict) -> dict:
+    current = fetch_fhm_cases()
+    latest = current["meta"]["dateRange"][1]
+    age = (date.today() - date.fromisoformat(latest)).days
+    if age > source["maximum_age_days"]:
+        raise ValueError(f"latest observation is {age} days old (limit {source['maximum_age_days']})")
+    published = None
+    output = Path(source["published_output"])
+    if output.exists():
+        published = json.loads(output.read_text())["meta"]["dateRange"][1]
+    encoded = json.dumps(current, ensure_ascii=False, sort_keys=True).encode()
+    return {
+        "rows": len(current["series"]), "latest": latest,
+        "published": published or "Not yet imported",
+        "comparison": "New data available" if published and latest > published else ("No newer observations" if published else "Ready for import"),
+        "detail": f"{len(current['regions'])} regions · {len(current['pathogens'])} pathogen categories · count and rate",
+        "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registry", type=Path, default=Path("config/external_sources.json"))
@@ -172,6 +193,8 @@ def main() -> None:
                 results.append({"name": source["name"], "status": "Valid", **validate_scb_pxweb_v2(source)})
             elif source["format"] == "fhm-pxweb-v1":
                 results.append({"name": source["name"], "status": "Valid", **validate_fhm_pxweb_v1(source)})
+            elif source["format"] == "fhm-virus-cases":
+                results.append({"name": source["name"], "status": "Valid", **validate_fhm_cases(source)})
             else:
                 raise ValueError(f"unsupported format: {source['format']}")
         except Exception as exc:

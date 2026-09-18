@@ -8,6 +8,7 @@ on:
       - config/external_sources.json
       - scripts/validate_external_sources.py
       - scripts/fetch_fhm_vaccination.py
+      - scripts/fetch_fhm_cases.py
       - .github/workflows/validate-external-data.yml
   schedule:
     - cron: "17 0 * * *"
@@ -45,6 +46,7 @@ jobs:
           python3 scripts/fetch_wastewater.py public/data/wastewater.json
           python3 scripts/fetch_scb_mortality.py public/data/mortality.json
           python3 scripts/fetch_fhm_vaccination.py public/data/vaccination.json
+          python3 scripts/fetch_fhm_cases.py public/data/cases.json
 
       - name: Commit source updates
         shell: bash
@@ -55,6 +57,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/data/wastewater.json public/data/mortality.json public/data/vaccination.json
+          git add public/data/wastewater.json public/data/mortality.json public/data/vaccination.json public/data/cases.json
           git commit -m "Update external surveillance data"
           git push

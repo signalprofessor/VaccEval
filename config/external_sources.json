@@ -59,6 +59,19 @@
       "required_age_codes": ["3", "4", "5"],
       "maximum_age_days": 300,
       "maximum_bytes": 5000000
+    },
+    {
+      "id": "fhm_reported_virus_cases",
+      "name": "FHM reported virus cases",
+      "format": "fhm-virus-cases",
+      "published_output": "public/data/cases.json",
+      "regions": {
+        "05": "Östergötland",
+        "06": "Jönköping",
+        "08": "Kalmar"
+      },
+      "maximum_age_days": 21,
+      "maximum_bytes": 10000000
     }
   ]
 }
