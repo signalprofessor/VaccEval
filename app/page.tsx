@@ -382,7 +382,7 @@ function MonitorView({
       cases.meta.dateRange[0],
       ww.meta.dateRange[0],
       mortality.meta.dateRange[0],
-      vaccination.snapshots[0].snapshotDate,
+      clinical.meta.dateRange[0],
     ].sort().at(-1)!,
     monitorMax = [
       cases.meta.dateRange[1],
@@ -425,8 +425,8 @@ function MonitorView({
       };
     });
   const clinicalEnd = clinical.series.filter((d) => d.date <= monitorDate).map((d) => d.date).sort().at(-1) || clinical.meta.dateRange[0];
-  const vaccine = vaccination.snapshots.filter((d) => d.snapshotDate <= monitorDate).at(-1) || vaccination.snapshots[0];
-  const maxCoverage = Math.max(...vaccine.records.map((r) => r.percent), 1);
+  const vaccine = vaccination.snapshots.filter((d) => d.snapshotDate <= monitorDate).at(-1);
+  const maxCoverage = vaccine ? Math.max(...vaccine.records.map((r) => r.percent), 1) : 1;
   const mortalityLatest = mortality.series.filter((d) => d.date <= monitorDate).map((d) => d.date).sort().at(-1) || mortality.meta.dateRange[0];
   const mortalityCards = mortality.series
     .filter((d) => d.date === mortalityLatest)
@@ -481,8 +481,8 @@ function MonitorView({
     },
     {
       name: 'Vaccination',
-      date: vaccine.snapshotDate,
-      state: ageDays(vaccine.snapshotDate) > 90 ? 'Seasonal pause' : 'Current',
+      date: vaccine?.snapshotDate || null,
+      state: vaccine ? (ageDays(vaccine.snapshotDate) > 90 ? 'Seasonal pause' : 'Current') : 'Not available',
       note: 'FHM / NVR',
     },
     {
@@ -650,10 +650,10 @@ function MonitorView({
                 </span>
               </div>
               <span className="panel-date">
-                {dateLabel(vaccine.snapshotDate)}
+                {vaccine ? dateLabel(vaccine.snapshotDate) : 'No prior snapshot'}
               </span>
             </div>
-            <div className="coverage-grid">
+            {vaccine ? <><div className="coverage-grid">
               {['Östergötland', 'Jönköping', 'Kalmar'].map((region) => (
                 <article key={region}>
                   <h3>{region}</h3>
@@ -679,7 +679,7 @@ function MonitorView({
                     ))}
                 </article>
               ))}
-            </div>
+            </div><p className="qualification">Latest stored FHM snapshot on or before the selected monitor date. VaccEval currently has {vaccination.snapshots.length} stored vaccination snapshot{vaccination.snapshots.length === 1 ? '' : 's'}; intermediate historical coverage cannot be reconstructed.</p></> : <div className="panel-unavailable"><Database size={18}/><span><strong>No vaccination snapshot available</strong><small>The first stored FHM snapshot is {dateLabel(vaccination.snapshots[0].snapshotDate)}.</small></span></div>}
           </section>
           <section className="mortality-panel">
             <div className="panel-title">
@@ -737,7 +737,7 @@ function MonitorView({
                 <small>{source.note}</small>
               </div>
               <div>
-                <strong>{dateLabel(source.date)}</strong>
+                <strong>{source.date ? dateLabel(source.date) : '—'}</strong>
                 <small>{source.state}</small>
               </div>
             </div>

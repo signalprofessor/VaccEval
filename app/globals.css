@@ -859,6 +859,8 @@ footer {
 .source-dot.snapshot {
   background: #9aa5a2;
 }
+.source-dot.not-available,.source-dot.historical{background:#9aa5a2}
+.panel-unavailable{min-height:105px;border:1px dashed #cdd9d5;border-radius:10px;background:#f5f7f6;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:10px}.panel-unavailable span{display:flex;flex-direction:column}.panel-unavailable strong{font-size:11px;color:var(--ink)}.panel-unavailable small{font-size:9px;margin-top:3px}
 .privacy-note {
   border-top: 1px solid var(--line);
   margin-top: 8px;
