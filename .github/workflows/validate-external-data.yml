@@ -32,21 +32,34 @@ jobs:
       - name: Check out VaccEval
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Validate registered external sources
+      - name: Validate and refresh sources independently
         shell: bash
         run: |
           set +e
-          python3 scripts/validate_external_sources.py
-          status=$?
-          cat output/external-data-validation.md >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
+          : > /tmp/vacceval-source-failures
 
-      - name: Refresh compact public datasets
-        run: |
-          python3 scripts/fetch_wastewater.py public/data/wastewater.json
-          python3 scripts/fetch_scb_mortality.py public/data/mortality.json
-          python3 scripts/fetch_fhm_vaccination.py public/data/vaccination.json
-          python3 scripts/fetch_fhm_cases.py public/data/cases.json
+          refresh_source() {
+            source_id="$1"
+            output="$2"
+            shift 2
+            report="/tmp/validation-${source_id}.md"
+            if python3 scripts/validate_external_sources.py --source "$source_id" --report "$report"; then
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+              if ! "$@" "$output"; then
+                echo "- ${source_id}: importer failed" >> /tmp/vacceval-source-failures
+              fi
+            else
+              cat "$report" >> "$GITHUB_STEP_SUMMARY"
+              echo "- ${source_id}: validation failed; previous published data retained" >> /tmp/vacceval-source-failures
+            fi
+          }
+
+          refresh_source slu_seec_wastewater public/data/wastewater.json python3 scripts/fetch_wastewater.py
+          refresh_source scb_weekly_deaths public/data/mortality.json python3 scripts/fetch_scb_mortality.py
+          refresh_source fhm_covid_vaccination public/data/vaccination.json python3 scripts/fetch_fhm_vaccination.py
+          refresh_source fhm_reported_virus_cases public/data/cases.json python3 scripts/fetch_fhm_cases.py
+
+          exit 0
 
       - name: Commit source updates
         shell: bash
@@ -60,3 +73,15 @@ jobs:
           git add public/data/wastewater.json public/data/mortality.json public/data/vaccination.json public/data/cases.json
           git commit -m "Update external surveillance data"
           git push
+
+      - name: Report isolated source failures
+        if: always()
+        shell: bash
+        run: |
+          if [ -s /tmp/vacceval-source-failures ]; then
+            {
+              echo "## Sources retaining previous published data"
+              cat /tmp/vacceval-source-failures
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi

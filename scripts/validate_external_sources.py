@@ -45,8 +45,9 @@ def validate_csv(source: dict, raw: bytes) -> dict:
         raise ValueError("no sampling dates")
     latest = max(dates)
     age = (date.today() - date.fromisoformat(latest)).days
+    warning = None
     if age > source["maximum_age_days"]:
-        raise ValueError(f"latest observation is {age} days old (limit {source['maximum_age_days']})")
+        warning = f"latest observation is {age} days old (expected at most {source['maximum_age_days']})"
 
     targets = {row["target"] for row in rows}
     if missing := set(source["required_targets"]) - targets:
@@ -55,7 +56,10 @@ def validate_csv(source: dict, raw: bytes) -> dict:
     if missing := set(source["required_cities"]) - cities:
         raise ValueError(f"missing required cities: {', '.join(sorted(missing))}")
 
-    return {"rows": len(rows), "latest": latest, "cities": len(cities), "targets": len(targets)}
+    return {
+        "rows": len(rows), "latest": latest, "cities": len(cities), "targets": len(targets),
+        "warning": warning,
+    }
 
 
 def download(url: str, maximum_bytes: int) -> bytes:
@@ -80,8 +84,9 @@ def validate_scb_pxweb_v2(source: dict) -> dict:
     metadata = json.loads(metadata_raw)
     latest = list(metadata["dimension"]["Tid"]["category"]["index"])[-1]
     age = period_age_days(latest)
+    warning = None
     if age > source["maximum_age_days"]:
-        raise ValueError(f"latest observation is {age} days old (limit {source['maximum_age_days']})")
+        warning = f"latest observation is {age} days old (expected at most {source['maximum_age_days']})"
 
     region_labels = metadata["dimension"]["Region"]["category"]["label"]
     for code, label in source["regions"].items():
@@ -109,7 +114,11 @@ def validate_scb_pxweb_v2(source: dict) -> dict:
         "latest": latest,
         "published": published or "Not yet imported",
         "comparison": "New data available" if published and latest > published else ("No newer observations" if published else "Ready for contextual import"),
-        "detail": f"{len(source['regions'])} regions · all ages · both sexes · preliminary/revisable",
+        "detail": (
+            f"{len(source['regions'])} regions · all ages · both sexes · preliminary/revisable · "
+            f"source updated {metadata.get('updated', 'unknown')}"
+        ),
+        "warning": warning,
         "bytes": len(metadata_raw) + len(data_raw),
         "sha256": hashlib.sha256(metadata_raw + data_raw).hexdigest(),
     }
@@ -127,8 +136,9 @@ def validate_fhm_pxweb_v1(source: dict) -> dict:
 
     current = parse_fhm_vaccination(query_fhm_vaccination())
     age = (date.today() - date.fromisoformat(current["snapshotDate"])).days
+    warning = None
     if age > source["maximum_age_days"]:
-        raise ValueError(f"latest snapshot is {age} days old (limit {source['maximum_age_days']})")
+        warning = f"latest snapshot is {age} days old (expected at most {source['maximum_age_days']})"
     published = None
     output = Path(source["published_output"])
     if output.exists():
@@ -142,6 +152,7 @@ def validate_fhm_pxweb_v1(source: dict) -> dict:
         "published": published or "Not yet imported",
         "comparison": "New data available" if published and current["snapshotDate"] > published else ("No newer observations" if published else "Ready for snapshot import"),
         "detail": f"{len(source['regions'])} regions · 3 age groups · aggregate counts and percentages",
+        "warning": warning,
         "bytes": len(metadata_raw) + len(encoded),
         "sha256": hashlib.sha256(metadata_raw + encoded).hexdigest(),
     }
@@ -151,8 +162,9 @@ def validate_fhm_cases(source: dict) -> dict:
     current = fetch_fhm_cases()
     latest = current["meta"]["dateRange"][1]
     age = (date.today() - date.fromisoformat(latest)).days
+    warning = None
     if age > source["maximum_age_days"]:
-        raise ValueError(f"latest observation is {age} days old (limit {source['maximum_age_days']})")
+        warning = f"latest observation is {age} days old (expected at most {source['maximum_age_days']})"
     published = None
     output = Path(source["published_output"])
     if output.exists():
@@ -163,6 +175,7 @@ def validate_fhm_cases(source: dict) -> dict:
         "published": published or "Not yet imported",
         "comparison": "New data available" if published and latest > published else ("No newer observations" if published else "Ready for import"),
         "detail": f"{len(current['regions'])} regions · {len(current['pathogens'])} pathogen categories · count and rate",
+        "warning": warning,
         "bytes": len(encoded), "sha256": hashlib.sha256(encoded).hexdigest(),
     }
 
@@ -171,12 +184,17 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registry", type=Path, default=Path("config/external_sources.json"))
     parser.add_argument("--report", type=Path, default=Path("output/external-data-validation.md"))
+    parser.add_argument("--source", help="Validate only one registered source id")
     args = parser.parse_args()
     registry = json.loads(args.registry.read_text())
     results = []
     failed = False
 
-    for source in registry["sources"]:
+    sources = [source for source in registry["sources"] if not args.source or source["id"] == args.source]
+    if args.source and not sources:
+        raise SystemExit(f"unknown source id: {args.source}")
+
+    for source in sources:
         try:
             if source["format"] == "csv":
                 raw = download(source["url"], source["maximum_bytes"])
@@ -184,17 +202,20 @@ def main() -> None:
                 published = load_published_date(Path(source["published_output"]))
                 comparison = "New data available" if details["latest"] > published else "No newer observations"
                 results.append({
-                    "name": source["name"], "status": "Valid", "bytes": len(raw),
+                    "name": source["name"], "status": "Warning" if details["warning"] else "Valid", "bytes": len(raw),
                     "sha256": hashlib.sha256(raw).hexdigest(), "published": published,
                     "comparison": comparison,
                     "detail": f"{details['cities']} cities · {details['targets']} targets", **details,
                 })
             elif source["format"] == "scb-pxweb-v2":
-                results.append({"name": source["name"], "status": "Valid", **validate_scb_pxweb_v2(source)})
+                details = validate_scb_pxweb_v2(source)
+                results.append({"name": source["name"], "status": "Warning" if details["warning"] else "Valid", **details})
             elif source["format"] == "fhm-pxweb-v1":
-                results.append({"name": source["name"], "status": "Valid", **validate_fhm_pxweb_v1(source)})
+                details = validate_fhm_pxweb_v1(source)
+                results.append({"name": source["name"], "status": "Warning" if details["warning"] else "Valid", **details})
             elif source["format"] == "fhm-virus-cases":
-                results.append({"name": source["name"], "status": "Valid", **validate_fhm_cases(source)})
+                details = validate_fhm_cases(source)
+                results.append({"name": source["name"], "status": "Warning" if details["warning"] else "Valid", **details})
             else:
                 raise ValueError(f"unsupported format: {source['format']}")
         except Exception as exc:
@@ -210,12 +231,14 @@ def main() -> None:
         "|---|---:|---:|---:|---:|---|",
     ]
     for result in results:
-        if result["status"] == "Valid":
+        if result["status"] in {"Valid", "Warning"}:
             lines.append(
-                f"| {result['name']} | Valid | {result['rows']:,} | {result['latest']} | "
+                f"| {result['name']} | {result['status']} | {result['rows']:,} | {result['latest']} | "
                 f"{result['published']} | {result['comparison']} |"
             )
             lines += ["", f"SHA-256 `{result['sha256']}` · {result['detail']}"]
+            if result.get("warning"):
+                lines += ["", f"Warning: {result['warning']}"]
         else:
             lines.append(f"| {result['name']} | {result['status']} | — | — | — | Last valid data retained |")
 
