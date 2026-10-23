@@ -93,6 +93,17 @@ type CaseData = {
   pathogens: string[];
   series: CaseDatum[];
 };
+type SourceStatusEntry = {
+  name: string;
+  state: 'available' | 'unavailable';
+  checkedAt: string;
+  lastSuccessfulCheck: string | null;
+  message: string | null;
+};
+type SourceStatusData = {
+  meta: { checkedAt: string; hasWarnings: boolean };
+  sources: Record<string, SourceStatusEntry>;
+};
 type Point = { date: string; value: number };
 type Mode = 'clinical' | 'wastewater' | 'cases';
 type Model = 'weekoverweek' | 'linear';
@@ -371,12 +382,14 @@ function MonitorView({
   cases,
   vaccination,
   mortality,
+  sourceStatus,
 }: {
   clinical: ClinicalData;
   ww: WWData;
   cases: CaseData;
   vaccination: VaccinationData;
   mortality: MortalityData;
+  sourceStatus: SourceStatusData;
 }) {
   const monitorMin = [
       cases.meta.dateRange[0],
@@ -463,8 +476,10 @@ function MonitorView({
   }));
   const clinicalLag = Math.floor((new Date(`${monitorDate}T12:00:00`).getTime() - new Date(`${clinicalEnd}T12:00:00`).getTime()) / 86400000),
     clinicalAlerts = clinicalLag <= 7 ? virusOverview.flatMap((group) => group.viruses.filter((item) => item.change !== null && item.change > 0.2).map((item) => ({...item,region:group.region}))).sort((a,b)=>(b.change||0)-(a.change||0)) : [];
-  const sources = [
+  const sourceWarning = (id: string) => sourceStatus.sources[id]?.state === 'unavailable',
+    sources = [
     {
+      id: 'fhm_reported_virus_cases',
       name: 'Reported cases',
       date: caseLatest,
       state:
@@ -474,30 +489,43 @@ function MonitorView({
       note: 'FHM / SmiNet',
     },
     {
+      id: 'slu_seec_wastewater',
       name: 'Wastewater',
       date: wwLatest,
       state: monitorDate === monitorMax && ageDays(wwLatest) <= 21 ? 'Current' : 'Historical',
       note: 'SLU / SEEC',
     },
     {
+      id: 'fhm_covid_vaccination',
       name: 'Vaccination',
       date: vaccine?.snapshotDate || null,
       state: vaccine ? (ageDays(vaccine.snapshotDate) > 90 ? 'Seasonal pause' : 'Current') : 'Not available',
       note: 'FHM / NVR',
     },
     {
+      id: 'scb_weekly_deaths',
       name: 'Mortality',
       date: mortalityLatest,
       state: 'Preliminary',
       note: 'SCB',
     },
     {
+      id: 'clinical_research',
       name: 'Clinical research',
       date: clinicalEnd,
       state: 'Snapshot',
       note: 'Three-region dataset',
     },
-  ];
+  ].map((source) =>
+    sourceWarning(source.id)
+      ? {
+          ...source,
+          state: 'Source unavailable',
+          note: `${source.note} · Stored data retained`,
+        }
+      : source,
+  );
+  const unavailableSources = sources.filter((source) => sourceWarning(source.id));
   return (
     <section className="monitor-workspace">
       <div className="monitor-replay">
@@ -727,6 +755,19 @@ function MonitorView({
               </span>
             </div>
           </div>
+          {unavailableSources.length > 0 && (
+            <div className="source-warning" role="status">
+              <AlertTriangle size={17} />
+              <div>
+                <strong>Previous validated data in use</strong>
+                <span>
+                  {unavailableSources.map((source) => source.name).join(', ')}
+                  {' '}could not be refreshed at the latest check. Other sources
+                  continue to update normally.
+                </span>
+              </div>
+            </div>
+          )}
           {sources.map((source) => (
             <div className="source-row" key={source.name}>
               <span
@@ -1353,6 +1394,7 @@ export default function Home() {
     [cases, setCases] = useState<CaseData | null>(null),
     [vaccination, setVaccination] = useState<VaccinationData | null>(null),
     [mortality, setMortality] = useState<MortalityData | null>(null),
+    [sourceStatus, setSourceStatus] = useState<SourceStatusData | null>(null),
     [view, setView] = useState<ViewMode>('monitor'),
     [methodOpen, setMethodOpen] = useState(false);
   useEffect(() => {
@@ -1362,15 +1404,17 @@ export default function Home() {
       fetch('/data/cases.json').then((r) => r.json()),
       fetch('/data/vaccination.json').then((r) => r.json()),
       fetch('/data/mortality.json').then((r) => r.json()),
-    ]).then(([a, b, c, d, e]) => {
+      fetch('/data/source-status.json').then((r) => r.json()),
+    ]).then(([a, b, c, d, e, f]) => {
       setClinical(a);
       setWW(b);
       setCases(c);
       setVaccination(d);
       setMortality(e);
+      setSourceStatus(f);
     });
   }, []);
-  if (!clinical || !ww || !cases || !vaccination || !mortality)
+  if (!clinical || !ww || !cases || !vaccination || !mortality || !sourceStatus)
     return <main className="loading">Loading VaccEval surveillance data…</main>;
   return (
     <main className="app-shell">
@@ -1417,6 +1461,7 @@ export default function Home() {
           cases={cases}
           vaccination={vaccination}
           mortality={mortality}
+          sourceStatus={sourceStatus}
         />
       ) : (
         <ExploreView clinical={clinical} ww={ww} cases={cases} />

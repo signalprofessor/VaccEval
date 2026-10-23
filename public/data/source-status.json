@@ -1,0 +1,36 @@
+{
+  "meta": {
+    "checkedAt": "2026-10-23T12:49:36Z",
+    "hasWarnings": true
+  },
+  "sources": {
+    "slu_seec_wastewater": {
+      "name": "Wastewater",
+      "state": "unavailable",
+      "checkedAt": "2026-10-23T12:49:36Z",
+      "lastSuccessfulCheck": null,
+      "message": "Source could not be refreshed; previous validated data retained."
+    },
+    "scb_weekly_deaths": {
+      "name": "All-cause mortality",
+      "state": "available",
+      "checkedAt": "2026-10-23T12:49:36Z",
+      "lastSuccessfulCheck": "2026-10-23T12:49:36Z",
+      "message": null
+    },
+    "fhm_covid_vaccination": {
+      "name": "Vaccination",
+      "state": "available",
+      "checkedAt": "2026-10-23T12:49:36Z",
+      "lastSuccessfulCheck": "2026-10-23T12:49:36Z",
+      "message": null
+    },
+    "fhm_reported_virus_cases": {
+      "name": "Reported cases",
+      "state": "available",
+      "checkedAt": "2026-10-23T12:49:36Z",
+      "lastSuccessfulCheck": "2026-10-23T12:49:36Z",
+      "message": null
+    }
+  }
+}
