@@ -1,35 +1,35 @@
 {
   "meta": {
-    "checkedAt": "2026-10-27T02:04:32Z",
+    "checkedAt": "2026-10-28T02:14:13Z",
     "hasWarnings": true
   },
   "sources": {
     "slu_seec_wastewater": {
       "name": "Wastewater",
       "state": "unavailable",
-      "checkedAt": "2026-10-27T02:04:32Z",
+      "checkedAt": "2026-10-28T02:14:13Z",
       "lastSuccessfulCheck": null,
       "message": "Source could not be refreshed; previous validated data retained."
     },
     "scb_weekly_deaths": {
       "name": "All-cause mortality",
       "state": "available",
-      "checkedAt": "2026-10-27T02:04:32Z",
-      "lastSuccessfulCheck": "2026-10-27T02:04:32Z",
+      "checkedAt": "2026-10-28T02:14:13Z",
+      "lastSuccessfulCheck": "2026-10-28T02:14:13Z",
       "message": null
     },
     "fhm_covid_vaccination": {
       "name": "Vaccination",
       "state": "available",
-      "checkedAt": "2026-10-27T02:04:32Z",
-      "lastSuccessfulCheck": "2026-10-27T02:04:32Z",
+      "checkedAt": "2026-10-28T02:14:13Z",
+      "lastSuccessfulCheck": "2026-10-28T02:14:13Z",
       "message": null
     },
     "fhm_reported_virus_cases": {
       "name": "Reported cases",
       "state": "available",
-      "checkedAt": "2026-10-27T02:04:32Z",
-      "lastSuccessfulCheck": "2026-10-27T02:04:32Z",
+      "checkedAt": "2026-10-28T02:14:13Z",
+      "lastSuccessfulCheck": "2026-10-28T02:14:13Z",
       "message": null
     }
   }
