@@ -58,5 +58,33 @@ jobs:
           local-dir: ./loopia-dist/
           server-dir: ./
           security: strict
+          # Loopia manages authentication on the server. Never upload or delete
+          # these files, including files tracked by an earlier deployment.
+          dangerous-clean-slate: false
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.htaccess
+            **/.htpasswd*
+            **/.htgroup*
           log-level: minimal
           timeout: 120000
+
+      - name: Verify anonymous access is blocked
+        shell: bash
+        run: |
+          set -euo pipefail
+          for url in \
+            https://vacceval.se/ \
+            https://vacceval.se/data/cases.json \
+            https://www.vacceval.se/ \
+            https://www.vacceval.se/data/cases.json; do
+            status=$(curl --silent --show-error --location \
+              --max-time 30 --output /dev/null --write-out '%{http_code}' "$url")
+            if [ "$status" != "401" ]; then
+              echo "::error::Authentication check failed: $url returned HTTP $status (expected 401)"
+              exit 1
+            fi
+            echo "Authentication required: $url"
+          done
