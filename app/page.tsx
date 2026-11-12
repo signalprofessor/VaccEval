@@ -549,6 +549,7 @@ function MonitorView({
       </div>
       <div className="monitor-layout">
         <div className="monitor-main">
+          <div className="monitor-column monitor-clinical-column">
           <section className="virus-panel">
             <div className="panel-title">
               <div>
@@ -653,6 +654,26 @@ function MonitorView({
               </div>
             </div>
           </section>
+          <section className="mortality-panel">
+            <div className="panel-title">
+              <div>
+                <HeartPulse size={18} />
+                <span><strong>All-cause mortality</strong><small>Context indicator · not attributable to a specific pathogen</small></span>
+              </div>
+              <span className="panel-date">Week ending {dateLabel(mortalityLatest)}</span>
+            </div>
+            <div className="mortality-grid">
+              {mortalityCards.map((item) => (
+                <article key={item.region}>
+                  <span>{item.region}</span><strong>{item.count}</strong>
+                  <small>deaths · {item.change === null ? 'change unavailable' : `${item.change >= 0 ? '+' : ''}${item.change.toFixed(0)}% week over week`}</small>
+                </article>
+              ))}
+            </div>
+            <p className="qualification">SCB figures for the latest calendar year are preliminary and subject to revision. This indicator provides health-system context and does not identify cause of death.</p>
+          </section>
+          </div>
+          <div className="monitor-column monitor-covid-column">
           <section className={`warning-panel ${clinicalLag > 7 ? 'paused' : ''}`}>
             <div className="panel-title">
               <div>
@@ -678,41 +699,7 @@ function MonitorView({
             </div> : <div className="warning-list">{clinicalAlerts.length ? clinicalAlerts.map((alert) => <div className="warning-item" key={`${alert.region}-${alert.pathogen}`}><i className={alert.change! > .5 ? 'red' : 'yellow'}></i><span><strong>{alert.pathogen}</strong><small>{alert.region}</small></span><b>{alert.change! > .5 ? 'Red' : 'Yellow'} · +{(alert.change! * 100).toFixed(0)}%</b></div>) : <div className="empty-warning"><ShieldCheck size={16}/>No increases above the alert thresholds</div>}</div>}
           </section>
           <RegionalCovidPanel data={regionalCovid} date={monitorDate} error={regionalError} />
-          <section className="mortality-panel">
-            <div className="panel-title">
-              <div>
-                <HeartPulse size={18} />
-                <span>
-                  <strong>All-cause mortality</strong>
-                  <small>
-                    Context indicator · not attributable to a specific pathogen
-                  </small>
-                </span>
-              </div>
-              <span className="panel-date">
-                Week ending {dateLabel(mortalityLatest)}
-              </span>
-            </div>
-            <div className="mortality-grid">
-              {mortalityCards.map((item) => (
-                <article key={item.region}>
-                  <span>{item.region}</span>
-                  <strong>{item.count}</strong>
-                  <small>
-                    deaths ·{' '}
-                    {item.change === null
-                      ? 'change unavailable'
-                      : `${item.change >= 0 ? '+' : ''}${item.change.toFixed(0)}% week over week`}
-                  </small>
-                </article>
-              ))}
-            </div>
-            <p className="qualification">
-              SCB figures for the latest calendar year are preliminary and
-              subject to revision. This indicator provides health-system context
-              and does not identify cause of death.
-            </p>
-          </section>
+          </div>
         </div>
         <aside className="source-panel">
           <div className="panel-title">

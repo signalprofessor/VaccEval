@@ -624,6 +624,14 @@ footer {
 .monitor-main {
   display: grid;
   gap: 14px;
+  align-items: start;
+  align-self: start;
+}
+.monitor-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
 }
 .warning-panel,
 .vaccination-panel,
@@ -815,7 +823,7 @@ footer {
   margin: 12px 2px 0;
 }
 .source-panel {
-  align-self: stretch;
+  align-self: start;
 }
 .source-row {
   display: grid;
@@ -1235,9 +1243,9 @@ footer {
 }
 @media (min-width: 1200px) and (min-aspect-ratio: 16/10) {
   .monitor-main {
-    grid-template-columns: minmax(520px, 1.15fr) minmax(430px, 1fr);
-    grid-template-rows: minmax(255px, auto) minmax(210px, auto);
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-rows: auto;
+    align-items: start;
   }
   .virus-panel {
     grid-column: 1;
