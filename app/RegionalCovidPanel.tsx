@@ -20,7 +20,7 @@ export default function RegionalCovidPanel({ data, date, error, health }: { data
   const points = data && expanded ? dailySeries(data, region, setting, start, date) : [];
   return (
     <section className="vaccination-panel regional-covid-panel">
-      <div className="panel-title"><div><Activity size={18} /><span><strong>Regional COVID-19 care</strong><small>VaccEval / LiU · registered diagnoses · reporting completeness unknown</small></span></div></div>
+      <div className="panel-title"><div><Activity size={18} /><span><strong>VaccEval COVID</strong><small>Health records from SÖSR · reporting completeness unknown</small></span></div></div>
       {!data ? <div className="panel-unavailable" role="status">{error || 'Loading protected regional data…'}</div> : <>
         {(health?.state === 'unavailable' || error) && <div className="source-warning" role="status"><div><strong>Previous validated regional data in use</strong><span>The latest refresh failed. Stored observations remain available.</span></div></div>}
         {health && Date.now() - Date.parse(health.checkedAt) > 2 * 86400000 && <div className="source-warning" role="status"><div><strong>Automatic check overdue</strong><span>No recorded source check in the last two days. Stored data remain visible.</span></div></div>}

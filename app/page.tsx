@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RegionalCovidPanel from './RegionalCovidPanel';
+import RegionalCovidExplorer from './RegionalCovidExplorer';
+import ExploreSourceSelect, { type ExploreMode } from './ExploreSourceSelect';
 import type { RegionalCovid, RegionalHealth } from './regional-covid-data';
 import {
   Activity,
@@ -110,6 +112,8 @@ type Mode = 'clinical' | 'wastewater' | 'cases';
 type Model = 'weekoverweek' | 'linear';
 type ViewMode = 'monitor' | 'explore';
 type PlotRange = '3m' | '6m' | '1y' | 'all';
+declare const __VACCEVAL_VERSION__: string;
+const version = typeof __VACCEVAL_VERSION__ === 'string' ? __VACCEVAL_VERSION__ : 'development';
 
 const fmt = new Intl.DateTimeFormat('en-GB', {
   day: '2-digit',
@@ -493,20 +497,20 @@ function MonitorView({
     sources = [
     {
       id: 'regional_covid',
-      name: 'Regional COVID care',
+      name: 'VaccEval COVID',
       date: regionalCovid?.diagnoses.filter((row) => row.date <= monitorDate).map((row) => row.date).sort().at(-1) || null,
       state: regionalCovid ? 'Completeness unknown' : 'Not available',
-      note: 'VaccEval / LiU · latest observation',
+      note: 'Health records from SÖSR',
     },
     {
       id: 'fhm_reported_virus_cases',
-      name: 'Reported cases',
+      name: 'Lab-confirmed cases',
       date: caseLatest,
       state:
         monitorDate === monitorMax && ageDays(caseLatest) <= 21
           ? 'Current'
           : 'Historical',
-      note: 'FHM / SmiNet',
+      note: 'Reported to FoHM',
     },
     {
       id: 'slu_seec_wastewater',
@@ -531,10 +535,10 @@ function MonitorView({
     },
     {
       id: 'clinical_research',
-      name: 'Clinical research',
+      name: 'VaccEval data',
       date: clinicalEnd,
       state: 'Snapshot',
-      note: 'Three-region dataset',
+      note: 'Health records from SÖSR',
     },
   ].map((source) =>
     sourceWarning(source.id)
@@ -565,7 +569,7 @@ function MonitorView({
                 <span>
                   <strong>Virus activity overview</strong>
                   <small>
-                    Reported cases and healthcare encounters · aggregate weekly
+                    Lab-confirmed cases and health records · aggregate weekly
                     indicators
                   </small>
                 </span>
@@ -573,7 +577,7 @@ function MonitorView({
             </div>
             <div className="matrix-section">
               <div className="matrix-label">
-                <strong>Laboratory-confirmed reported cases</strong>
+                <strong>Lab-confirmed reported cases (FoHM)</strong>
                 <small>per 100,000 · week ending {dateLabel(caseLatest)}</small>
               </div>
               <div className="clinical-matrix">
@@ -614,7 +618,7 @@ function MonitorView({
             </div>
             <div className="matrix-section clinical-section">
               <div className="matrix-label">
-                <strong>Healthcare encounters</strong>
+                <strong>Health record data from South-Eastern Sweden</strong>
                 <small>latest complete seven-day period per region</small>
               </div>
               <div className="clinical-matrix">
@@ -700,7 +704,7 @@ function MonitorView({
                 <p>
                   The clinical snapshot ends {dateLabel(clinicalEnd)}.
                   Historical percentages remain visible when both seven-day
-                  periods contain at least 10 encounters; low-count comparisons
+                  periods contain at least 10 cases; low-count comparisons
                   are marked N/A.
                 </p>
               </div>
@@ -767,12 +771,18 @@ function ExploreView({
   clinical,
   ww,
   cases,
+  regionalCovid,
+  regionalHealth,
+  regionalError,
 }: {
   clinical: ClinicalData;
   ww: WWData;
   cases: CaseData;
+  regionalCovid: RegionalCovid | null;
+  regionalHealth: RegionalHealth | null;
+  regionalError: string | null;
 }) {
-  const [mode, setMode] = useState<Mode>('clinical'),
+  const [mode, setMode] = useState<ExploreMode>('inpatient'),
     [region, setRegion] = useState('Östergötland'),
     [pathogen, setPathogen] = useState('Influenza'),
     [analysisDate, setAnalysisDate] = useState('2025-02-15'),
@@ -786,6 +796,7 @@ function ExploreView({
           ? ww
           : aggregateCases;
   const result = useMemo(() => {
+    if (mode === 'inpatient' || mode === 'outpatient' || mode === 'total') return null;
     const base = active.series
       .filter((d: any) => d.region === region && d.pathogen === pathogen)
       .map((d: any) => ({
@@ -801,8 +812,9 @@ function ExploreView({
       ? analyse(base, analysisDate, mode, model, plotRange)
       : null;
   }, [active, region, pathogen, analysisDate, mode, model, plotRange]);
-  function changeMode(next: Mode) {
+  function changeMode(next: ExploreMode) {
     setMode(next);
+    if (next === 'inpatient' || next === 'outpatient' || next === 'total') return;
     const d =
       next === 'clinical'
         ? clinical
@@ -832,6 +844,8 @@ function ExploreView({
   }
   const clampDate = (d: string, a: string, b: string) =>
     d < a ? a : d > b ? b : d;
+  if (mode === 'inpatient' || mode === 'outpatient' || mode === 'total')
+    return <RegionalCovidExplorer data={regionalCovid} setting={mode} health={regionalHealth} error={regionalError} onSourceChange={changeMode} />;
   if (!result) return null;
   const isWW = mode === 'wastewater',
     isCases = mode === 'cases',
@@ -852,16 +866,15 @@ function ExploreView({
             d.date === shift(result.date, -7),
         )
       : null,
+    clinicalCountsSufficient = mode !== 'clinical' || [0, 7].every((offset) =>
+      clinical.series.filter((row) => row.region === region && row.pathogen === pathogen && row.date >= shift(result.date, -offset - 6) && row.date <= shift(result.date, -offset)).reduce((sum, row) => sum + row.count, 0) >= 10),
     changeAvailable =
       result.relativeChangeAvailable &&
+      clinicalCountsSufficient &&
       (!isCases ||
         ((caseCurrent?.count ?? 0) >= 10 && (casePrevious?.count ?? 0) >= 10)),
     trend = !changeAvailable
-      ? result.slope > 0
-        ? 'Increasing'
-        : result.slope < 0
-          ? 'Decreasing'
-          : 'Stable'
+      ? 'Not assessed'
       : Math.abs(result.relChange) < 0.1
         ? 'Stable'
         : result.relChange > 0
@@ -877,21 +890,11 @@ function ExploreView({
       ? 'PMMoV-normalized signal'
       : isCases
         ? 'reported cases per 100,000'
-        : 'encounters per day';
+        : 'cases per day';
   return (
     <section className="workspace explore-workspace">
       <div className="filterbar seven">
-        <label>
-          Data type
-          <select
-            value={mode}
-            onChange={(e) => changeMode(e.target.value as Mode)}
-          >
-            <option value="clinical">Clinical</option>
-            <option value="cases">Reported cases</option>
-            <option value="wastewater">Wastewater</option>
-          </select>
-        </label>
+        <ExploreSourceSelect value={mode} onChange={changeMode} />
         <label>
           Region
           <select value={region} onChange={(e) => setRegion(e.target.value)}>
@@ -991,8 +994,8 @@ function ExploreView({
               : 'N/A'}
           </strong>
           <small>
-            {!changeAvailable && isCases
-              ? 'Too few reported cases'
+            {!changeAvailable && (isCases || !clinicalCountsSufficient)
+              ? 'Too few cases for comparison'
               : isWeekly
                 ? 'versus previous observation'
                 : model === 'linear'
@@ -1007,9 +1010,9 @@ function ExploreView({
             {Math.abs(result.slope).toPrecision(2)}{' '}
             {isWW
               ? 'signal/week'
-              : isCases
+              : isCases || !clinicalCountsSufficient
                 ? 'cases/100k/week'
-                : 'encounters/day²'}
+                : 'cases/day²'}
           </small>
         </article>
         <article>
@@ -1022,7 +1025,9 @@ function ExploreView({
           </strong>
           <small>
             {changeAvailable
-              ? '20% / 50% thresholds'
+              ? model === 'linear' && !isWeekly
+                ? '20% / 50% projected weekly increase'
+                : '20% / 50% increase versus prior period'
               : isCases
                 ? 'Requires ≥10 cases in both weeks'
                 : 'Previous level too close to zero'}
@@ -1041,17 +1046,18 @@ function ExploreView({
         <article className="chart-card">
           <div className="card-head">
             <div>
-              <h2>Activity and short-term forecast</h2>
+              <h2>{mode === 'clinical' ? 'VaccEval historical cases and short-term forecast' : 'Activity and short-term forecast'}</h2>
               <p>
                 Real-time view uses only observations available on the analysis
                 date.
+                {mode === 'clinical' && ` Snapshot ${clinical.meta.sourceSnapshot}; cases are counted by unique care contact, not by unique patient. This archive has no validated inpatient/outpatient split.`}
               </p>
             </div>
             <div className="legend">
               <span className="dot observed"></span>
-              {isWW ? 'Samples' : 'Daily encounters'}{' '}
+              {isWW ? 'Samples' : isCases ? 'Weekly lab-confirmed cases' : 'Daily cases'}{' '}
               <span className="line smooth"></span>
-              {isWW ? '2-sample mean' : '7-day mean'}{' '}
+              {isWW ? '2-sample mean' : isCases ? '2-week mean' : '7-day mean'}{' '}
               <span className="line forecast"></span>Forecast
             </div>
           </div>
@@ -1241,7 +1247,8 @@ function MethodologyPanel({
             <h3>Monitoring view</h3>
             <p>
               The virus overview combines weekly laboratory-confirmed cases per
-              100,000 residents with unique healthcare encounters during each
+              100,000 residents with health record cases, counted by unique care
+              contact rather than unique patient, during each
               region’s latest complete seven-day period. Regional end dates are
               retained separately, so missing dates are never treated as zero
               activity. Historical monitor replay selects the most recent
@@ -1264,7 +1271,7 @@ function MethodologyPanel({
             <p>
               Each percentage compares two consecutive, non-overlapping
               seven-day periods. A percentage is shown only when both periods
-              contain at least 10 encounters; otherwise it is marked{' '}
+              contain at least 10 cases; otherwise it is marked{' '}
               <strong>N/A</strong> because small denominators can produce
               misleading changes.
             </p>
@@ -1273,7 +1280,10 @@ function MethodologyPanel({
             <h3>Warnings</h3>
             <p>
               Yellow indicates an increase above 20% and red an increase above
-              50%. Current warnings are paused when the underlying clinical
+              50% compared with the preceding period. These are change thresholds,
+              not forecast probabilities. The local linear model instead assesses
+              its projected weekly increase relative to the fitted current level.
+              Current warnings are paused when the underlying clinical
               snapshot is stale. Historical percentages may still be displayed,
               but they are not presented as current alerts.
             </p>
@@ -1283,7 +1293,7 @@ function MethodologyPanel({
             <p>
               Clinical analyses use either week-over-week comparison or a local
               linear trend fitted to the latest 14 causal seven-day means.
-              Reported cases and wastewater use a two-observation causal mean
+              Lab-confirmed cases and wastewater use a two-observation causal mean
               and a short weekly projection. Case percentages and alerts require
               at least 10 reported cases in both weeks. Forecast reliability
               summarizes historical prediction error for the selected series.
@@ -1301,9 +1311,9 @@ function MethodologyPanel({
                 </dd>
               </div>
               <div>
-                <dt>Clinical</dt>
+                <dt>VaccEval data</dt>
                 <dd>
-                  Regional aggregate snapshot · through{' '}
+                  Health records from SÖSR · snapshot {clinical.meta.sourceSnapshot} · through{' '}
                   {dateLabel(clinical.meta.dateRange[1])}
                 </dd>
               </div>
@@ -1389,12 +1399,12 @@ export default function Home() {
   }, []);
   useEffect(() => {
     Promise.all([
-      fetch('/data/vacceval.json').then((r) => r.json()),
-      fetch('/data/wastewater.json').then((r) => r.json()),
-      fetch('/data/cases.json').then((r) => r.json()),
-      fetch('/data/vaccination.json').then((r) => r.json()),
-      fetch('/data/mortality.json').then((r) => r.json()),
-      fetch('/data/source-status.json').then((r) => r.json()),
+      fetch('/data/vacceval.json', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/data/wastewater.json', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/data/cases.json', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/data/vaccination.json', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/data/mortality.json', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/data/source-status.json', { cache: 'no-store' }).then((r) => r.json()),
     ]).then(([a, b, c, d, e, f]) => {
       setClinical(a as ClinicalData);
       setWW(b as WWData);
@@ -1457,7 +1467,7 @@ export default function Home() {
           regionalHealth={regionalHealth}
         />
       ) : (
-        <ExploreView clinical={clinical} ww={ww} cases={cases} />
+        <ExploreView clinical={clinical} ww={ww} cases={cases} regionalCovid={regionalCovid} regionalHealth={regionalHealth} regionalError={regionalError} />
       )}
       <div className="acknowledgement">
         VaccEval results · Developed and maintained by{' '}
@@ -1465,6 +1475,7 @@ export default function Home() {
           Signalprofessor
         </a>
         .
+        <span className="build-version"> Version {version}</span>
       </div>
       {methodOpen && (
         <MethodologyPanel

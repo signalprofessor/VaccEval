@@ -882,6 +882,7 @@ footer {
 .regional-filters label{display:flex;flex:1;flex-direction:column;gap:5px;font-size:10px;color:var(--muted)}
 .regional-filters select{min-width:100px;padding:6px;border:1px solid var(--line);border-radius:6px;background:white;color:var(--ink)}
 .regional-chart{height:230px;margin-top:10px}
+.build-version{margin-left:10px;opacity:.75;white-space:nowrap}
 .regional-extra{border-top:1px solid var(--line);padding-top:12px;font-size:11px}
 .regional-extra p{margin:7px 0}
 .source-warning{display:flex;gap:9px;margin:-2px 0 8px;padding:11px;border:1px solid #efd5cb;border-radius:9px;background:#fff5f1;color:#b95e39}
