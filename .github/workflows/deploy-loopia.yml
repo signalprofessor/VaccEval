@@ -68,6 +68,7 @@ jobs:
             **/.htaccess
             **/.htpasswd*
             **/.htgroup*
+            **/data/regional-covid.json
           log-level: minimal
           timeout: 120000
 
@@ -78,6 +79,7 @@ jobs:
           for url in \
             https://vacceval.se/ \
             https://vacceval.se/data/cases.json \
+            https://vacceval.se/data/regional-covid.json \
             https://www.vacceval.se/ \
             https://www.vacceval.se/data/cases.json; do
             status=$(curl --silent --show-error --location \

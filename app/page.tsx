@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import RegionalCovidPanel from './RegionalCovidPanel';
+import type { RegionalCovid } from './regional-covid-data';
 import {
   Activity,
   AlertTriangle,
@@ -11,7 +13,6 @@ import {
   LayoutDashboard,
   ShieldCheck,
   SlidersHorizontal,
-  Syringe,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -383,6 +384,8 @@ function MonitorView({
   vaccination,
   mortality,
   sourceStatus,
+  regionalCovid,
+  regionalError,
 }: {
   clinical: ClinicalData;
   ww: WWData;
@@ -390,6 +393,8 @@ function MonitorView({
   vaccination: VaccinationData;
   mortality: MortalityData;
   sourceStatus: SourceStatusData;
+  regionalCovid: RegionalCovid | null;
+  regionalError: string | null;
 }) {
   const monitorMin = [
       cases.meta.dateRange[0],
@@ -398,6 +403,7 @@ function MonitorView({
       clinical.meta.dateRange[0],
     ].sort().at(-1)!,
     monitorMax = [
+      regionalCovid?.meta.dateRange[1] || '',
       cases.meta.dateRange[1],
       ww.meta.dateRange[1],
       mortality.meta.dateRange[1],
@@ -439,7 +445,6 @@ function MonitorView({
     });
   const clinicalEnd = clinical.series.filter((d) => d.date <= monitorDate).map((d) => d.date).sort().at(-1) || clinical.meta.dateRange[0];
   const vaccine = vaccination.snapshots.filter((d) => d.snapshotDate <= monitorDate).at(-1);
-  const maxCoverage = vaccine ? Math.max(...vaccine.records.map((r) => r.percent), 1) : 1;
   const mortalityLatest = mortality.series.filter((d) => d.date <= monitorDate).map((d) => d.date).sort().at(-1) || mortality.meta.dateRange[0];
   const mortalityCards = mortality.series
     .filter((d) => d.date === mortalityLatest)
@@ -478,6 +483,13 @@ function MonitorView({
     clinicalAlerts = clinicalLag <= 7 ? virusOverview.flatMap((group) => group.viruses.filter((item) => item.change !== null && item.change > 0.2).map((item) => ({...item,region:group.region}))).sort((a,b)=>(b.change||0)-(a.change||0)) : [];
   const sourceWarning = (id: string) => sourceStatus.sources[id]?.state === 'unavailable',
     sources = [
+    {
+      id: 'regional_covid',
+      name: 'Regional COVID care',
+      date: regionalCovid?.diagnoses.filter((row) => row.date <= monitorDate).map((row) => row.date).sort().at(-1) || null,
+      state: regionalCovid ? 'Completeness unknown' : 'Not available',
+      note: 'VaccEval / LiU · latest observation',
+    },
     {
       id: 'fhm_reported_virus_cases',
       name: 'Reported cases',
@@ -665,50 +677,7 @@ function MonitorView({
               </div>
             </div> : <div className="warning-list">{clinicalAlerts.length ? clinicalAlerts.map((alert) => <div className="warning-item" key={`${alert.region}-${alert.pathogen}`}><i className={alert.change! > .5 ? 'red' : 'yellow'}></i><span><strong>{alert.pathogen}</strong><small>{alert.region}</small></span><b>{alert.change! > .5 ? 'Red' : 'Yellow'} · +{(alert.change! * 100).toFixed(0)}%</b></div>) : <div className="empty-warning"><ShieldCheck size={16}/>No increases above the alert thresholds</div>}</div>}
           </section>
-          <section className="vaccination-panel">
-            <div className="panel-title">
-              <div>
-                <Syringe size={18} />
-                <span>
-                  <strong>COVID-19 vaccination coverage</strong>
-                  <small>
-                    Current seasonal coverage · FHM National Vaccination
-                    Register
-                  </small>
-                </span>
-              </div>
-              <span className="panel-date">
-                {vaccine ? dateLabel(vaccine.snapshotDate) : 'No prior snapshot'}
-              </span>
-            </div>
-            {vaccine ? <><div className="coverage-grid">
-              {['Östergötland', 'Jönköping', 'Kalmar'].map((region) => (
-                <article key={region}>
-                  <h3>{region}</h3>
-                  {vaccine.records
-                    .filter((r) => r.region === region)
-                    .map((record) => (
-                      <div className="coverage-row" key={record.ageGroup}>
-                        <div>
-                          <span>{record.ageGroup}</span>
-                          <strong>{record.percent.toFixed(1)}%</strong>
-                        </div>
-                        <div className="coverage-track">
-                          <i
-                            style={{
-                              width: `${(record.percent / maxCoverage) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <small>
-                          {numberFmt.format(record.count)} vaccinated
-                        </small>
-                      </div>
-                    ))}
-                </article>
-              ))}
-            </div><p className="qualification">Latest stored FHM snapshot on or before the selected monitor date. VaccEval currently has {vaccination.snapshots.length} stored vaccination snapshot{vaccination.snapshots.length === 1 ? '' : 's'}; intermediate historical coverage cannot be reconstructed.</p></> : <div className="panel-unavailable"><Database size={18}/><span><strong>No vaccination snapshot available</strong><small>The first stored FHM snapshot is {dateLabel(vaccination.snapshots[0].snapshotDate)}.</small></span></div>}
-          </section>
+          <RegionalCovidPanel data={regionalCovid} date={monitorDate} error={regionalError} />
           <section className="mortality-panel">
             <div className="panel-title">
               <div>
@@ -1118,7 +1087,7 @@ function ExploreView({
                   tickLine={false}
                 />
                 <Tooltip
-                  labelFormatter={dateLabel}
+                  labelFormatter={(value) => dateLabel(String(value))}
                   contentStyle={{
                     borderRadius: 10,
                     border: '1px solid #dbe5e2',
@@ -1365,6 +1334,7 @@ function MethodologyPanel({
           </section>
           <section className="method-caution">
             <h3>Limitations</h3>
+            <p>Regional COVID care uses the protected VaccEval / LiU aggregate exports. Totals add outpatient and inpatient diagnoses, not unique patients. Missing dates are unknown and remain gaps. Seven-day counts cover registered records only. Percentage changes, alerts and forecasts are not assessed for these data because reporting completeness is unknown. The separate six-month vaccination measure is a count with unconfirmed doses-versus-people definition, not vaccination coverage.</p>
             <p>
               Signals support situational awareness; they do not establish
               causality or replace epidemiological and clinical assessment.
@@ -1395,9 +1365,21 @@ export default function Home() {
     [vaccination, setVaccination] = useState<VaccinationData | null>(null),
     [mortality, setMortality] = useState<MortalityData | null>(null),
     [sourceStatus, setSourceStatus] = useState<SourceStatusData | null>(null),
+    [regionalCovid, setRegionalCovid] = useState<RegionalCovid | null>(null),
+    [regionalError, setRegionalError] = useState<string | null>(null),
     [view, setView] = useState<ViewMode>('monitor'),
     [methodOpen, setMethodOpen] = useState(false);
   useEffect(() => {
+    fetch('/data/regional-covid.json', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Regional data unavailable');
+        return response.json() as Promise<RegionalCovid>;
+      })
+      .then((data) => {
+        if (!data.meta || !Array.isArray(data.diagnoses) || !Array.isArray(data.encounters) || !Array.isArray(data.vaccinations)) throw new Error('Invalid regional data');
+        setRegionalCovid(data);
+      })
+      .catch(() => setRegionalError('Protected regional data are unavailable. Other sources remain available.'));
     Promise.all([
       fetch('/data/vacceval.json').then((r) => r.json()),
       fetch('/data/wastewater.json').then((r) => r.json()),
@@ -1406,12 +1388,12 @@ export default function Home() {
       fetch('/data/mortality.json').then((r) => r.json()),
       fetch('/data/source-status.json').then((r) => r.json()),
     ]).then(([a, b, c, d, e, f]) => {
-      setClinical(a);
-      setWW(b);
-      setCases(c);
-      setVaccination(d);
-      setMortality(e);
-      setSourceStatus(f);
+      setClinical(a as ClinicalData);
+      setWW(b as WWData);
+      setCases(c as CaseData);
+      setVaccination(d as VaccinationData);
+      setMortality(e as MortalityData);
+      setSourceStatus(f as SourceStatusData);
     });
   }, []);
   if (!clinical || !ww || !cases || !vaccination || !mortality || !sourceStatus)
@@ -1462,6 +1444,8 @@ export default function Home() {
           vaccination={vaccination}
           mortality={mortality}
           sourceStatus={sourceStatus}
+          regionalCovid={regionalCovid}
+          regionalError={regionalError}
         />
       ) : (
         <ExploreView clinical={clinical} ww={ww} cases={cases} />
