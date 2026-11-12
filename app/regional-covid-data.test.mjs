@@ -10,6 +10,10 @@ const data = {
   ],
 };
 assert.deepEqual(dailySeries(data, 'Kalmar', 'outpatient', '2026-10-01', '2026-10-04').map((p) => p.count), [0, null, 2, null]);
+assert.deepEqual(dailySeries(data, 'Kalmar', 'outpatient', '2026-09-30', '2026-10-04', true).map((p) => p.count), [null, 0, 0, 2, null]);
+assert.equal(dailySeries(data, 'Kalmar', 'outpatient', '2026-10-01', '2026-10-03', true)[1].assumedZero, true);
+assert.equal(dailySeries(data, 'Kalmar', 'outpatient', '2026-10-01', '2026-10-03', true)[0].assumedZero, false);
+assert.deepEqual(dailySeries(data, 'Kalmar', 'outpatient', '2026-10-01', '2026-10-02', true).map((p) => p.count), [0, null]);
 const summary = summarizeRegion(data, 'Kalmar', '2026-10-03');
 assert.equal(summary.total, 6);
 assert.equal(summary.outpatient + summary.inpatient, summary.total);

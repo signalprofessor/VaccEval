@@ -23,11 +23,15 @@ export function summarizeRegion(data: RegionalCovid, region: string, cutoff: str
   return { end, observedDays: new Set(week.map((row) => row.date)).size, outpatient: count('outpatient'), inpatient: count('inpatient'), total: count('total') };
 }
 
-export function dailySeries(data: RegionalCovid, region: string, setting: CareSetting, start: string, end: string) {
-  const rows = new Map(data.diagnoses.filter((row) => row.region === region).map((row) => [row.date, row]));
-  const points: { date: string; count: number | null }[] = [];
+export function dailySeries(data: RegionalCovid, region: string, setting: CareSetting, start: string, end: string, assumeZeros = false) {
+  const rows = new Map(data.diagnoses.filter((row) => row.region === region && row.date <= end).map((row) => [row.date, row]));
+  const dates = [...rows.keys()].sort();
+  const first = dates[0], last = dates.at(-1);
+  const points: { date: string; count: number | null; assumedZero: boolean }[] = [];
   for (let date = start; date <= end; date = addDays(date, 1)) {
-    points.push({ date, count: rows.get(date)?.[setting] ?? null });
+    const row = rows.get(date);
+    const assumedZero = !row && assumeZeros && !!first && !!last && date >= first && date <= last;
+    points.push({ date, count: row ? row[setting] : assumedZero ? 0 : null, assumedZero });
   }
   return points;
 }

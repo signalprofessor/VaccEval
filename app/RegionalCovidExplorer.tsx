@@ -16,12 +16,13 @@ export default function RegionalCovidExplorer({ data, setting, onSourceChange, h
   const [cutoff, setCutoff] = useState<string | null>(null);
   const [range, setRange] = useState('3m');
   const [selection, setSelection] = useState('COVID-19');
+  const [assumeZeros, setAssumeZeros] = useState(true);
   const maxDate = data?.meta.dateRange[1] || new Date().toISOString().slice(0, 10);
   const date = cutoff || maxDate;
   const start = data ? range === 'all' ? data.meta.dateRange[0] : addDays(date, range === '1y' ? -365 : range === '6m' ? -182 : -90) : date;
   const rows = data?.diagnoses.filter((row) => row.region === region && row.date <= date) ?? [];
   const latest = rows.at(-1);
-  const points = data ? dailySeries(data, region, setting, start, date) : [];
+  const points = data ? dailySeries(data, region, setting, start, date, assumeZeros) : [];
   const week = rows.filter((row) => row.date >= addDays(date, -6));
   const registered = week.length ? week.reduce((sum, row) => sum + row[setting], 0) : null;
   return <section className="workspace explore-workspace">
@@ -46,11 +47,12 @@ export default function RegionalCovidExplorer({ data, setting, onSourceChange, h
       </div>
       <article className="chart-card">
         <div className="card-head"><div><h2>COVID-19 · {labels[setting]} · {region}</h2><p>Health records from SÖSR · VaccEval via LiU · daily registered cases</p></div></div>
+        <label className="missing-date-option">Missing dates within the observed period<select value={assumeZeros ? 'zero' : 'gap'} onChange={(event) => setAssumeZeros(event.target.value === 'zero')}><option value="zero">Show as 0 (assumption)</option><option value="gap">Show as gaps</option></select></label>
         <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={points} margin={{ top: 18, right: 20, bottom: 4, left: 0 }}>
           <CartesianGrid stroke="#dbe5e2" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="date" minTickGap={38} tickFormatter={(value) => dateLabel(value).slice(0, 6)} tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip labelFormatter={(value) => dateLabel(String(value))} formatter={(value) => [value, 'Cases']} /><Line dataKey="count" name="Cases" stroke="#123f3a" strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} /><ReferenceLine x={date} stroke="#78908b" strokeDasharray="4 4" />
+          <Tooltip labelFormatter={(value) => dateLabel(String(value))} formatter={(value, _name, item) => [value, item.payload?.assumedZero ? 'Cases (assumed zero)' : 'Cases']} /><Line dataKey="count" name="Cases" stroke="#123f3a" strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} /><ReferenceLine x={date} stroke="#78908b" strokeDasharray="4 4" />
         </ComposedChart></ResponsiveContainer></div>
-        <p className="qualification">Missing dates remain gaps, including after the latest observation. An explicit zero is shown as zero. These are registered diagnosis counts, not unique patients. Total diagnosed cases adds inpatient and outpatient records. Latest observation does not confirm complete reporting.</p>
+        <p className="qualification">{assumeZeros ? 'Missing dates between the first and last observation are plotted as assumed zeros. This is a display assumption, not a confirmed source value.' : 'Missing dates are plotted as gaps.'} Dates outside the region’s observed period remain unavailable. Source counts, completeness assessment and forecasts are unchanged. Total diagnosed cases adds inpatient and outpatient records, not unique patients.</p>
       </article>
     </>}
   </section>;

@@ -1339,7 +1339,7 @@ function MethodologyPanel({
           </section>
           <section className="method-caution">
             <h3>Limitations</h3>
-            <p>Regional COVID care uses the protected VaccEval / LiU aggregate exports. Totals add outpatient and inpatient diagnoses, not unique patients. Missing dates are unknown and remain gaps. Seven-day counts cover registered records only. Percentage changes, alerts and forecasts are not assessed for these data because reporting completeness is unknown. The separate six-month vaccination measure is a count with unconfirmed doses-versus-people definition, not vaccination coverage.</p>
+            <p>VaccEval COVID uses the protected VaccEval / LiU aggregate exports. Totals add outpatient and inpatient diagnoses, not unique patients. Source records with missing dates remain unknown. Plots default to displaying internal missing dates as assumed zeros; this can be switched to gaps. Dates outside the observed period remain unavailable. This display setting does not change source counts or enable percentage changes, alerts or forecasts. Seven-day counts cover registered records only. The separate six-month vaccination measure is a count with unconfirmed doses-versus-people definition, not vaccination coverage.</p>
             <p>
               Signals support situational awareness; they do not establish
               causality or replace epidemiological and clinical assessment.

@@ -14,10 +14,11 @@ export default function RegionalCovidPanel({ data, date, error, health }: { data
   const [setting, setSetting] = useState<CareSetting>('total');
   const [range, setRange] = useState('3m');
   const [expanded, setExpanded] = useState(false);
+  const [assumeZeros, setAssumeZeros] = useState(true);
   const summary = data?.regions.map((region) => ({ region, ...summarizeRegion(data, region, date) })) ?? [];
   // Use the selected calendar date, so absent recent dates remain visible gaps.
   const start = data ? (range === 'all' ? data.meta.dateRange[0] : addDays(date, range === '1y' ? -365 : -90)) : date;
-  const points = data && expanded ? dailySeries(data, region, setting, start, date) : [];
+  const points = data && expanded ? dailySeries(data, region, setting, start, date, assumeZeros) : [];
   return (
     <section className="vaccination-panel regional-covid-panel">
       <div className="panel-title"><div><Activity size={18} /><span><strong>VaccEval COVID</strong><small>Health records from SÖSR · reporting completeness unknown</small></span></div></div>
@@ -34,7 +35,8 @@ export default function RegionalCovidPanel({ data, date, error, health }: { data
           <div className="regional-filters"><label>Region<select value={region} onChange={(e) => setRegion(e.target.value)}>{data.regions.map((region) => <option key={region}>{region}</option>)}</select></label>
             <label>Care setting<select value={setting} onChange={(e) => setSetting(e.target.value as CareSetting)}>{Object.entries(settings).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>
             <label>History<select value={range} onChange={(e) => setRange(e.target.value)}><option value="3m">3 months</option><option value="1y">1 year</option><option value="all">All history</option></select></label></div>
-          <p className="qualification">Daily registered diagnoses · gaps are missing dates. Dots show isolated observations; lines do not bridge gaps.</p>
+          <label className="missing-date-option">Missing dates within the observed period<select value={assumeZeros ? 'zero' : 'gap'} onChange={(event) => setAssumeZeros(event.target.value === 'zero')}><option value="zero">Show as 0 (assumption)</option><option value="gap">Show as gaps</option></select></label>
+          <p className="qualification">{assumeZeros ? 'Missing dates between the first and last observation are plotted as assumed zeros; source values remain unchanged.' : 'Missing dates appear as gaps.'} Dates outside the observed period remain unavailable.</p>
           <div className="regional-chart"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={points} margin={{ top: 16, right: 16, bottom: 8, left: 0 }}><CartesianGrid strokeDasharray="3 5" vertical={false} /><XAxis dataKey="date" minTickGap={40} tickFormatter={(value) => label(value).slice(0, 6)} tick={{ fontSize: 10 }} /><YAxis allowDecimals={false} width={40} tick={{ fontSize: 10 }} /><Tooltip labelFormatter={(value) => label(String(value))} formatter={(value) => [value, `${settings[setting]} diagnoses`]} /><Line dataKey="count" name={settings[setting]} stroke="#174b43" strokeWidth={2} dot={{ r: 2 }} connectNulls={false} isAnimationActive={false} /></ComposedChart></ResponsiveContainer></div>
           <div className="regional-extra"><strong>Separate source measures · {region}</strong>
             {[{ name: 'COVID care episodes', rows: data.encounters }, { name: 'COVID vaccinations in the preceding six months', rows: data.vaccinations }].map(({ name, rows }) => {
@@ -44,7 +46,7 @@ export default function RegionalCovidPanel({ data, date, error, health }: { data
             <p className="qualification">Care episodes are a separate measure and are not added to diagnoses. Vaccination counts reproduce the source’s rolling six-month measure; doses versus people is unconfirmed. This is not a coverage percentage and daily values must not be summed.</p>
           </div>
         </div>}
-        <p className="qualification">Imported {label(data.meta.importedAt.slice(0, 10))}.{health ? ` Source checked ${label(health.checkedAt.slice(0, 10))}.` : ' Automatic refresh not yet verified.'} Missing data remain missing during historical replay.</p>
+        <p className="qualification">Imported {label(data.meta.importedAt.slice(0, 10))}.{health ? ` Source checked ${label(health.checkedAt.slice(0, 10))}.` : ' Automatic refresh not yet verified.'} Source completeness remains unknown during historical replay.</p>
       </>}
     </section>
   );
