@@ -34,7 +34,7 @@ export default function RegionalCovidExplorer({ data, setting, onSourceChange, h
       <label>Sex<select disabled><option>All sexes</option></select></label>
       <label>Model<select disabled><option>Not assessed (missing data)</option></select></label>
       <label>Plot range<select value={range} onChange={(event) => setRange(event.target.value)}><option value="3m">3 months</option><option value="6m">6 months</option><option value="1y">1 year</option><option value="all">All history</option></select></label>
-      <div className="date-control"><span>Historical replay</span><div><input aria-label="Historical replay date" type="date" value={date} min={data?.meta.dateRange[0]} max={maxDate} onChange={(event) => { if (event.target.value) setCutoff(event.target.value); }} /></div></div>
+      <div className="date-control regional-replay"><span>Historical replay</span><div><input aria-label="Historical replay date" type="date" value={date} min={data?.meta.dateRange[0]} max={maxDate} onChange={(event) => { if (event.target.value) setCutoff(event.target.value); }} /></div></div>
     </div>
     {!data ? <div className="panel-unavailable">{error || 'Loading protected VaccEval COVID data…'}</div> : <>
       {(health?.state === 'unavailable' || error) && <div className="source-warning" role="status"><strong>Source refresh unavailable · previous validated data retained</strong></div>}
@@ -49,8 +49,8 @@ export default function RegionalCovidExplorer({ data, setting, onSourceChange, h
         <div className="card-head"><div><h2>COVID-19 · {labels[setting]} · {region}</h2><p>Health records from SÖSR · VaccEval via LiU · daily registered cases</p></div></div>
         <label className="missing-date-option">Missing dates within the observed period<select value={assumeZeros ? 'zero' : 'gap'} onChange={(event) => setAssumeZeros(event.target.value === 'zero')}><option value="zero">Show as 0 (assumption)</option><option value="gap">Show as gaps</option></select></label>
         <div className="chart-wrap"><ResponsiveContainer width="100%" height="100%"><ComposedChart data={points} margin={{ top: 18, right: 20, bottom: 4, left: 0 }}>
-          <CartesianGrid stroke="#dbe5e2" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="date" minTickGap={38} tickFormatter={(value) => dateLabel(value).slice(0, 6)} tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-          <Tooltip labelFormatter={(value) => dateLabel(String(value))} formatter={(value, _name, item) => [value, item.payload?.assumedZero ? 'Cases (assumed zero)' : 'Cases']} /><Line dataKey="count" name="Cases" stroke="#123f3a" strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} /><ReferenceLine x={date} stroke="#78908b" strokeDasharray="4 4" />
+          <CartesianGrid stroke="var(--line)" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="date" minTickGap={38} tickFormatter={(value) => dateLabel(value).slice(0, 6)} tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+          <Tooltip labelFormatter={(value) => dateLabel(String(value))} formatter={(value, _name, item) => [value, item.payload?.assumedZero ? 'Cases (assumed zero)' : 'Cases']} /><Line dataKey="count" name="Cases" stroke="var(--blue)" strokeWidth={2} dot={{ r: 2.5 }} connectNulls={false} isAnimationActive={false} /><ReferenceLine x={date} stroke="var(--muted)" strokeDasharray="4 4" />
         </ComposedChart></ResponsiveContainer></div>
         <p className="qualification">{assumeZeros ? 'Missing dates between the first and last observation are plotted as assumed zeros. This is a display assumption, not a confirmed source value.' : 'Missing dates are plotted as gaps.'} Dates outside the region’s observed period remain unavailable. Source counts, completeness assessment and forecasts are unchanged. Total diagnosed cases adds inpatient and outpatient records, not unique patients.</p>
       </article>

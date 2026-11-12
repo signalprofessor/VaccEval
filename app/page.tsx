@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import RegionalCovidPanel from './RegionalCovidPanel';
+import RegionSymbols from './RegionSymbols';
 import RegionalCovidExplorer from './RegionalCovidExplorer';
 import ExploreSourceSelect, { type ExploreMode } from './ExploreSourceSelect';
 import type { RegionalCovid, RegionalHealth } from './regional-covid-data';
@@ -1068,7 +1069,7 @@ function ExploreView({
                 margin={{ top: 18, right: 20, bottom: 4, left: -12 }}
               >
                 <CartesianGrid
-                  stroke="#dbe5e2"
+                  stroke="var(--line)"
                   strokeDasharray="3 5"
                   vertical={false}
                 />
@@ -1078,12 +1079,12 @@ function ExploreView({
                     shortFmt.format(new Date(`${v}T12:00:00`))
                   }
                   minTickGap={38}
-                  tick={{ fontSize: 11, fill: '#62716e' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted)' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#62716e' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted)' }}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -1091,13 +1092,13 @@ function ExploreView({
                   labelFormatter={(value) => dateLabel(String(value))}
                   contentStyle={{
                     borderRadius: 10,
-                    border: '1px solid #dbe5e2',
+                    border: '1px solid var(--line)',
                   }}
                 />
                 <Area
                   dataKey="bandRange"
                   stroke="none"
-                  fill="#a6c9c3"
+                  fill="#B3CCE7"
                   fillOpacity={0.28}
                 />
                 <Line
@@ -1109,7 +1110,7 @@ function ExploreView({
                 />
                 <Line
                   dataKey="smooth"
-                  stroke="#123f3a"
+                  stroke="var(--blue)"
                   strokeWidth={2.6}
                   dot={false}
                   connectNulls
@@ -1129,7 +1130,7 @@ function ExploreView({
                   label={{
                     value: 'Analysis date',
                     position: 'insideTopLeft',
-                    fill: '#62716e',
+                    fill: 'var(--muted)',
                     fontSize: 11,
                   }}
                 />
@@ -1431,6 +1432,7 @@ export default function Home() {
             </strong>
           </div>
         </div>
+        <RegionSymbols />
         <nav className="view-switch" aria-label="Workspace mode">
           <button
             className={view === 'monitor' ? 'selected' : ''}
