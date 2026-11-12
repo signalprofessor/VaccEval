@@ -38,14 +38,8 @@ def read_rows(path, date_column, region_column, values):
     return sorted(records, key=lambda row: (row["date"], row["region"]))
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--diagnoses", type=Path, required=True)
-    parser.add_argument("--encounters", type=Path, required=True)
-    parser.add_argument("--vaccinations", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    diagnoses = read_rows(args.diagnoses, "Datum", "Region", {
+def build_payload(diagnosis_path, encounter_path, vaccination_path):
+    diagnoses = read_rows(diagnosis_path, "Datum", "Region", {
         "outpatient": "AntalCoviddiagnoserÖppenvård",
         "inpatient": "AntalCoviddiagnoserSlutenvård",
     })
@@ -61,13 +55,24 @@ def main():
         },
         "regions": ["Östergötland", "Jönköping", "Kalmar"],
         "diagnoses": diagnoses,
-        "encounters": read_rows(args.encounters, "StartdatumVårdtillfälle", "Region", {
+        "encounters": read_rows(encounter_path, "StartdatumVårdtillfälle", "Region", {
             "count": "AntalVårdtillfällen",
         }),
-        "vaccinations": read_rows(args.vaccinations, "Datum", "region", {
+        "vaccinations": read_rows(vaccination_path, "Datum", "region", {
             "count": "AntalVaccinationerSenaste6Månaderna",
         }),
     }
+    return payload
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--diagnoses", type=Path, required=True)
+    parser.add_argument("--encounters", type=Path, required=True)
+    parser.add_argument("--vaccinations", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    payload = build_payload(args.diagnoses, args.encounters, args.vaccinations)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
     print("Imported aggregate regional data; missing dates preserved.")

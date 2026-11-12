@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import RegionalCovidPanel from './RegionalCovidPanel';
-import type { RegionalCovid } from './regional-covid-data';
+import type { RegionalCovid, RegionalHealth } from './regional-covid-data';
 import {
   Activity,
   AlertTriangle,
@@ -386,6 +386,7 @@ function MonitorView({
   sourceStatus,
   regionalCovid,
   regionalError,
+  regionalHealth,
 }: {
   clinical: ClinicalData;
   ww: WWData;
@@ -395,6 +396,7 @@ function MonitorView({
   sourceStatus: SourceStatusData;
   regionalCovid: RegionalCovid | null;
   regionalError: string | null;
+  regionalHealth: RegionalHealth | null;
 }) {
   const monitorMin = [
       cases.meta.dateRange[0],
@@ -410,6 +412,12 @@ function MonitorView({
       vaccination.snapshots.at(-1)!.snapshotDate,
     ].sort().at(-1)!,
     [monitorDate, setMonitorDate] = useState(monitorMax);
+  const previousMonitorMax = useRef(monitorMax);
+  useEffect(() => {
+    const previous = previousMonitorMax.current;
+    setMonitorDate((date) => date === previous ? monitorMax : date);
+    previousMonitorMax.current = monitorMax;
+  }, [monitorMax]);
   const virusOverview = clinical.regions
     .filter((r) => r !== 'All regions')
     .map((region) => {
@@ -698,7 +706,7 @@ function MonitorView({
               </div>
             </div> : <div className="warning-list">{clinicalAlerts.length ? clinicalAlerts.map((alert) => <div className="warning-item" key={`${alert.region}-${alert.pathogen}`}><i className={alert.change! > .5 ? 'red' : 'yellow'}></i><span><strong>{alert.pathogen}</strong><small>{alert.region}</small></span><b>{alert.change! > .5 ? 'Red' : 'Yellow'} · +{(alert.change! * 100).toFixed(0)}%</b></div>) : <div className="empty-warning"><ShieldCheck size={16}/>No increases above the alert thresholds</div>}</div>}
           </section>
-          <RegionalCovidPanel data={regionalCovid} date={monitorDate} error={regionalError} />
+          <RegionalCovidPanel data={regionalCovid} date={monitorDate} error={regionalError} health={regionalHealth} />
           </div>
         </div>
         <aside className="source-panel">
@@ -1354,10 +1362,16 @@ export default function Home() {
     [sourceStatus, setSourceStatus] = useState<SourceStatusData | null>(null),
     [regionalCovid, setRegionalCovid] = useState<RegionalCovid | null>(null),
     [regionalError, setRegionalError] = useState<string | null>(null),
+    [regionalHealth, setRegionalHealth] = useState<RegionalHealth | null>(null),
     [view, setView] = useState<ViewMode>('monitor'),
     [methodOpen, setMethodOpen] = useState(false);
   useEffect(() => {
-    fetch('/data/regional-covid.json', { cache: 'no-store' })
+    const loadRegional = () => {
+      fetch('/data/regional-covid-status.json', { cache: 'no-store' })
+        .then((response) => response.ok ? response.json() as Promise<RegionalHealth> : null)
+        .then((health) => { if (health && ['available', 'unavailable'].includes(health.state) && Number.isFinite(Date.parse(health.checkedAt))) setRegionalHealth(health); })
+        .catch(() => {});
+      fetch('/data/regional-covid.json', { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('Regional data unavailable');
         return response.json() as Promise<RegionalCovid>;
@@ -1365,8 +1379,15 @@ export default function Home() {
       .then((data) => {
         if (!data.meta || !Array.isArray(data.diagnoses) || !Array.isArray(data.encounters) || !Array.isArray(data.vaccinations)) throw new Error('Invalid regional data');
         setRegionalCovid(data);
+        setRegionalError(null);
       })
       .catch(() => setRegionalError('Protected regional data are unavailable. Other sources remain available.'));
+    };
+    loadRegional();
+    const timer = window.setInterval(loadRegional, 30 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
     Promise.all([
       fetch('/data/vacceval.json').then((r) => r.json()),
       fetch('/data/wastewater.json').then((r) => r.json()),
@@ -1433,6 +1454,7 @@ export default function Home() {
           sourceStatus={sourceStatus}
           regionalCovid={regionalCovid}
           regionalError={regionalError}
+          regionalHealth={regionalHealth}
         />
       ) : (
         <ExploreView clinical={clinical} ww={ww} cases={cases} />

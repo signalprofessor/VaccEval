@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import { Activity } from 'lucide-react';
 import { CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { addDays, dailySeries, summarizeRegion, type CareSetting, type RegionalCovid } from './regional-covid-data';
+import { addDays, dailySeries, summarizeRegion, type CareSetting, type RegionalCovid, type RegionalHealth } from './regional-covid-data';
 
 const label = (date: string) => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 const countLabel = (count: number | null) => count === null ? '—' : count.toLocaleString('en-GB');
 const settings: Record<CareSetting, string> = { outpatient: 'Outpatient', inpatient: 'Inpatient', total: 'Total' };
 
-export default function RegionalCovidPanel({ data, date, error }: { data: RegionalCovid | null; date: string; error: string | null }) {
+export default function RegionalCovidPanel({ data, date, error, health }: { data: RegionalCovid | null; date: string; error: string | null; health: RegionalHealth | null }) {
   const [region, setRegion] = useState('Kalmar');
   const [setting, setSetting] = useState<CareSetting>('total');
   const [range, setRange] = useState('3m');
@@ -22,6 +22,8 @@ export default function RegionalCovidPanel({ data, date, error }: { data: Region
     <section className="vaccination-panel regional-covid-panel">
       <div className="panel-title"><div><Activity size={18} /><span><strong>Regional COVID-19 care</strong><small>VaccEval / LiU · registered diagnoses · reporting completeness unknown</small></span></div></div>
       {!data ? <div className="panel-unavailable" role="status">{error || 'Loading protected regional data…'}</div> : <>
+        {(health?.state === 'unavailable' || error) && <div className="source-warning" role="status"><div><strong>Previous validated regional data in use</strong><span>The latest refresh failed. Stored observations remain available.</span></div></div>}
+        {health && Date.now() - Date.parse(health.checkedAt) > 2 * 86400000 && <div className="source-warning" role="status"><div><strong>Automatic check overdue</strong><span>No recorded source check in the last two days. Stored data remain visible.</span></div></div>}
         <div className="regional-table-scroll"><table className="regional-table"><thead><tr><th>Region / latest observation</th><th>Outpatient</th><th>Inpatient</th><th>Total</th></tr></thead><tbody>
           {summary.map((item) => <tr key={item.region}><th>{item.region}<small>{item.end ? label(item.end) : 'No prior observation'}</small><small>{item.observedDays}/7 days have records</small></th><td>{countLabel(item.outpatient)}</td><td>{countLabel(item.inpatient)}</td><td>{countLabel(item.total)}</td></tr>)}
         </tbody></table></div>
@@ -42,7 +44,7 @@ export default function RegionalCovidPanel({ data, date, error }: { data: Region
             <p className="qualification">Care episodes are a separate measure and are not added to diagnoses. Vaccination counts reproduce the source’s rolling six-month measure; doses versus people is unconfirmed. This is not a coverage percentage and daily values must not be summed.</p>
           </div>
         </div>}
-        <p className="qualification">Imported {label(data.meta.importedAt.slice(0, 10))}. Missing data remain missing during historical replay.</p>
+        <p className="qualification">Imported {label(data.meta.importedAt.slice(0, 10))}.{health ? ` Source checked ${label(health.checkedAt.slice(0, 10))}.` : ' Automatic refresh not yet verified.'} Missing data remain missing during historical replay.</p>
       </>}
     </section>
   );

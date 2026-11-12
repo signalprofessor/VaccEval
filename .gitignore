@@ -41,6 +41,6 @@ loopia-dist/
 output/
 
 # Restricted regional exports are deployed separately to protected Loopia.
-/public/data/regional-covid.json
+/public/data/regional-covid*.json*
 __pycache__/
 *.tsbuildinfo

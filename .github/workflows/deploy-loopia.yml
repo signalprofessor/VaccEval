@@ -68,7 +68,7 @@ jobs:
             **/.htaccess
             **/.htpasswd*
             **/.htgroup*
-            **/data/regional-covid.json
+            **/data/regional-covid*.json*
           log-level: minimal
           timeout: 120000
 
@@ -90,3 +90,12 @@ jobs:
             fi
             echo "Authentication required: $url"
           done
+
+      - name: Refresh private regional COVID data from LiU
+        continue-on-error: true
+        env:
+          LIU_VACCEVAL_USERNAME: ${{ secrets.LIU_VACCEVAL_USERNAME }}
+          LIU_VACCEVAL_PASSWORD: ${{ secrets.LIU_VACCEVAL_PASSWORD }}
+          LOOPIA_FTP_USERNAME: ${{ secrets.LOOPIA_FTP_USERNAME }}
+          LOOPIA_FTP_PASSWORD: ${{ secrets.LOOPIA_FTP_PASSWORD }}
+        run: python3 scripts/refresh_private_covid.py

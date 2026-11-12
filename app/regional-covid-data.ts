@@ -1,4 +1,5 @@
 export type CareSetting = 'outpatient' | 'inpatient' | 'total';
+export type RegionalHealth = { state: 'available' | 'unavailable'; checkedAt: string; lastSuccessfulCheck?: string; lastImportedAt?: string };
 export type Diagnosis = { date: string; region: string; outpatient: number; inpatient: number; total: number };
 export type RegionalCovid = {
   meta: { importedAt: string; dateRange: string[]; reportingCompleteness: 'unknown' };
